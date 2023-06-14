@@ -61,6 +61,7 @@ public class SnapshotSplitReaderImpl implements SnapshotSplitReader {
 
     private ScanKind scanKind = ScanKind.ALL;
     private RecordComparator lazyPartitionComparator;
+    private boolean splitStreaming;
 
     public SnapshotSplitReaderImpl(
             FileStoreScan scan,
@@ -68,7 +69,8 @@ public class SnapshotSplitReaderImpl implements SnapshotSplitReader {
             CoreOptions options,
             SnapshotManager snapshotManager,
             SplitGenerator splitGenerator,
-            BiConsumer<FileStoreScan, Predicate> nonPartitionFilterConsumer) {
+            BiConsumer<FileStoreScan, Predicate> nonPartitionFilterConsumer,
+            boolean splitStreaming) {
         this.scan = scan;
         this.tableSchema = tableSchema;
         this.options = options;
@@ -77,6 +79,7 @@ public class SnapshotSplitReaderImpl implements SnapshotSplitReader {
                 new ConsumerManager(snapshotManager.fileIO(), snapshotManager.tablePath());
         this.splitGenerator = splitGenerator;
         this.nonPartitionFilterConsumer = nonPartitionFilterConsumer;
+        this.splitStreaming = splitStreaming;
     }
 
     @Override
@@ -157,6 +160,7 @@ public class SnapshotSplitReaderImpl implements SnapshotSplitReader {
                 snapshotId == null ? Snapshot.FIRST_SNAPSHOT_ID - 1 : snapshotId,
                 scanKind != ScanKind.ALL,
                 false,
+                splitStreaming,
                 splitGenerator,
                 files);
     }
@@ -201,6 +205,7 @@ public class SnapshotSplitReaderImpl implements SnapshotSplitReader {
                         snapshotId,
                         true,
                         true,
+                        splitStreaming,
                         splitGenerator,
                         FileStoreScan.Plan.groupByPartFiles(plan.files(FileKind.DELETE))));
 
@@ -209,6 +214,7 @@ public class SnapshotSplitReaderImpl implements SnapshotSplitReader {
                         snapshotId,
                         true,
                         false,
+                        splitStreaming,
                         splitGenerator,
                         FileStoreScan.Plan.groupByPartFiles(plan.files(FileKind.ADD))));
         return splits;
@@ -229,6 +235,7 @@ public class SnapshotSplitReaderImpl implements SnapshotSplitReader {
             long snapshotId,
             boolean isIncremental,
             boolean reverseRowKind,
+            boolean splitStreaming,
             SplitGenerator splitGenerator,
             Map<BinaryRow, Map<Integer, List<DataFileMeta>>> groupedDataFiles) {
         List<DataSplit> splits = new ArrayList<>();
@@ -238,8 +245,10 @@ public class SnapshotSplitReaderImpl implements SnapshotSplitReader {
             Map<Integer, List<DataFileMeta>> buckets = entry.getValue();
             for (Map.Entry<Integer, List<DataFileMeta>> bucketEntry : buckets.entrySet()) {
                 int bucket = bucketEntry.getKey();
-                if (isIncremental) {
+                if (isIncremental && !splitStreaming) {
                     // Don't split when incremental
+                    // If we specify splitStreaming, we need to split the files. When this table is
+                    // unaware-bucket, we do this
                     splits.add(
                             new DataSplit(
                                     snapshotId,
