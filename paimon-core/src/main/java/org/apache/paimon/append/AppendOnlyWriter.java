@@ -18,6 +18,7 @@
 
 package org.apache.paimon.append;
 
+import org.apache.paimon.CoreOptions;
 import org.apache.paimon.annotation.VisibleForTesting;
 import org.apache.paimon.compact.CompactManager;
 import org.apache.paimon.data.InternalRow;
@@ -74,6 +75,9 @@ public class AppendOnlyWriter implements RecordWriter<InternalRow>, MemoryOwner 
     private final FieldStatsCollector.Factory[] statsCollectors;
     private final IOManager ioManager;
 
+    private final List<String> indexColumns;
+    private final CoreOptions.IndexType indexType;
+
     private MemorySegmentPool memorySegmentPool;
     private WriterMetrics writerMetrics;
 
@@ -93,7 +97,9 @@ public class AppendOnlyWriter implements RecordWriter<InternalRow>, MemoryOwner 
             boolean spillable,
             String fileCompression,
             FieldStatsCollector.Factory[] statsCollectors,
-            WriterMetrics writerMetrics) {
+            WriterMetrics writerMetrics,
+            List<String> indexColumn,
+            CoreOptions.IndexType indexType) {
         this.fileIO = fileIO;
         this.schemaId = schemaId;
         this.fileFormat = fileFormat;
@@ -119,6 +125,8 @@ public class AppendOnlyWriter implements RecordWriter<InternalRow>, MemoryOwner 
             compactAfter.addAll(increment.compactIncrement().compactAfter());
         }
         this.writerMetrics = writerMetrics;
+        this.indexColumns = indexColumn;
+        this.indexType = indexType;
     }
 
     @Override
@@ -236,7 +244,9 @@ public class AppendOnlyWriter implements RecordWriter<InternalRow>, MemoryOwner 
                 pathFactory,
                 seqNumCounter,
                 fileCompression,
-                statsCollectors);
+                statsCollectors,
+                indexColumns,
+                indexType);
     }
 
     private void trySyncLatestCompaction(boolean blocking)

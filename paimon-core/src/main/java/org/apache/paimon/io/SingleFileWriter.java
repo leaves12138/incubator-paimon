@@ -154,6 +154,10 @@ public abstract class SingleFileWriter<T, R> implements FileWriter<T, R> {
         }
     }
 
+    protected void writeMeta(String key, String value) throws IOException {
+        writer.writeMeta(key, value);
+    }
+
     /** Abort executor to just have reference of path instead of whole writer. */
     public static class AbortExecutor {
 

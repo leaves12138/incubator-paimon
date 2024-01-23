@@ -48,6 +48,11 @@ public class ParquetBulkWriter implements FormatWriter {
     }
 
     @Override
+    public void writeMeta(String key, String value) throws IOException {
+        parquetWriter.getFooter().getFileMetaData().getKeyValueMetaData().put(key, value);
+    }
+
+    @Override
     public void flush() {
         // nothing we can do here
     }

@@ -69,6 +69,7 @@ public class AppendOnlyFileStoreWrite extends MemoryFileStoreWrite<InternalRow> 
     private final boolean useWriteBuffer;
     private final boolean spillable;
     private final FieldStatsCollector.Factory[] statsCollectors;
+    private final List<String> indexColumn;
 
     private boolean forceBufferSpill = false;
     private boolean skipCompaction;
@@ -102,6 +103,8 @@ public class AppendOnlyFileStoreWrite extends MemoryFileStoreWrite<InternalRow> 
         this.spillable = options.writeBufferSpillable(fileIO.isObjectStore(), isStreamingMode);
         this.statsCollectors =
                 StatsCollectorFactories.createStatsFactories(options, rowType.getFieldNames());
+
+        this.indexColumn = options.indexColumns();
     }
 
     @Override
@@ -143,7 +146,8 @@ public class AppendOnlyFileStoreWrite extends MemoryFileStoreWrite<InternalRow> 
                 spillable || forceBufferSpill,
                 fileCompression,
                 statsCollectors,
-                getWriterMetrics(partition, bucket));
+                getWriterMetrics(partition, bucket),
+                indexColumn);
     }
 
     public AppendOnlyCompactManager.CompactRewriter compactRewriter(
@@ -162,7 +166,8 @@ public class AppendOnlyFileStoreWrite extends MemoryFileStoreWrite<InternalRow> 
                             pathFactory.createDataFilePathFactory(partition, bucket),
                             new LongCounter(toCompact.get(0).minSequenceNumber()),
                             fileCompression,
-                            statsCollectors);
+                            statsCollectors,
+                            indexColumn);
             try {
                 rewriter.write(
                         new RecordReaderIterator<>(

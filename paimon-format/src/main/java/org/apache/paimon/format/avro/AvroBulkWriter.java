@@ -48,4 +48,8 @@ public class AvroBulkWriter<T> {
     public void finish() throws IOException {
         dataFileWriter.close();
     }
+
+    public void writeMeta(String key, String value) throws IOException {
+        dataFileWriter.setMeta(key, value);
+    }
 }

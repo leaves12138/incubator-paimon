@@ -122,6 +122,11 @@ public class AvroFileFormat extends FileFormat {
                 }
 
                 @Override
+                public void writeMeta(String key, String value) throws IOException {
+
+                }
+
+                @Override
                 public void flush() throws IOException {
                     writer.flush();
                 }

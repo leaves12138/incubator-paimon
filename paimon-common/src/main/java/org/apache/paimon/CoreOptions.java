@@ -486,6 +486,18 @@ public class CoreOptions implements Serializable {
                             "The field that generates the row kind for primary key table,"
                                     + " the row kind determines which data is '+I', '-U', '+U' or '-D'.");
 
+    public static final ConfigOption<String> INDEX_COLUMNS =
+            key("index.columns")
+                    .stringType()
+                    .noDefaultValue()
+                    .withDescription("The secondary index columns.");
+
+    public static final ConfigOption<IndexType> INDEX_TYPE =
+            key("index.type")
+                    .enumType(IndexType.class)
+                    .defaultValue(IndexType.BLOOM_FILTER)
+                    .withDescription("The secondary index type.");
+
     public static final ConfigOption<String> SEQUENCE_AUTO_PADDING =
             key("sequence.auto-padding")
                     .stringType()
@@ -1652,6 +1664,17 @@ public class CoreOptions implements Serializable {
         return options.get(ZORDER_VAR_LENGTH_CONTRIBUTION);
     }
 
+    public List<String> indexColumns() {
+        String columns = options.get(INDEX_COLUMNS);
+        return columns == null || StringUtils.isBlank(columns)
+                ? Collections.emptyList()
+                : Arrays.asList(columns.split(","));
+    }
+
+    public IndexType indexType() {
+        return options.get(INDEX_TYPE);
+    }
+
     /** Specifies the merge engine for table with primary key. */
     public enum MergeEngine implements DescribedEnum {
         DEDUPLICATE("deduplicate", "De-duplicate and keep the last row."),
@@ -2252,6 +2275,30 @@ public class CoreOptions implements Serializable {
         private final String description;
 
         ConsumerMode(String value, String description) {
+            this.value = value;
+            this.description = description;
+        }
+
+        @Override
+        public String toString() {
+            return value;
+        }
+
+        @Override
+        public InlineElement getDescription() {
+            return text(description);
+        }
+    }
+
+    /** Index type. */
+    public enum IndexType implements DescribedEnum {
+
+        BLOOM_FILTER("bloom-filter", "");
+
+        private final String value;
+        private final String description;
+
+        IndexType(String value, String description) {
             this.value = value;
             this.description = description;
         }

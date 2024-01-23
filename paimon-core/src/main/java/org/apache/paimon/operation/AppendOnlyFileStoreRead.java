@@ -35,6 +35,7 @@ import org.apache.paimon.schema.IndexCastMapping;
 import org.apache.paimon.schema.SchemaEvolutionUtil;
 import org.apache.paimon.schema.SchemaManager;
 import org.apache.paimon.schema.TableSchema;
+import org.apache.paimon.secondaryindex.Util;
 import org.apache.paimon.table.source.DataSplit;
 import org.apache.paimon.types.RowType;
 import org.apache.paimon.utils.BulkFormatMapping;
@@ -109,64 +110,59 @@ public class AppendOnlyFileStoreRead implements FileStoreRead<InternalRow> {
         }
         for (DataFileMeta file : split.dataFiles()) {
             String formatIdentifier = DataFilePathFactory.formatIdentifier(file.fileName());
-            BulkFormatMapping bulkFormatMapping =
-                    bulkFormatMappings.computeIfAbsent(
-                            new FormatKey(file.schemaId(), formatIdentifier),
-                            key -> {
-                                TableSchema tableSchema = schemaManager.schema(this.schemaId);
-                                TableSchema dataSchema = schemaManager.schema(key.schemaId);
+            FormatKey key = new FormatKey(file.schemaId(), formatIdentifier);
 
-                                // projection to data schema
-                                int[][] dataProjection =
-                                        SchemaEvolutionUtil.createDataProjection(
-                                                tableSchema.fields(),
-                                                dataSchema.fields(),
-                                                projection);
+            if (!bulkFormatMappings.containsKey(key)) {
+                TableSchema tableSchema = schemaManager.schema(this.schemaId);
+                TableSchema dataSchema = schemaManager.schema(key.schemaId);
 
-                                IndexCastMapping indexCastMapping =
-                                        SchemaEvolutionUtil.createIndexCastMapping(
-                                                Projection.of(projection).toTopLevelIndexes(),
-                                                tableSchema.fields(),
-                                                Projection.of(dataProjection).toTopLevelIndexes(),
-                                                dataSchema.fields());
+                // projection to data schema
+                int[][] dataProjection =
+                        SchemaEvolutionUtil.createDataProjection(
+                                tableSchema.fields(), dataSchema.fields(), projection);
 
-                                List<Predicate> dataFilters =
-                                        this.schemaId == key.schemaId
-                                                ? filters
-                                                : SchemaEvolutionUtil.createDataFilters(
-                                                        tableSchema.fields(),
-                                                        dataSchema.fields(),
-                                                        filters);
+                IndexCastMapping indexCastMapping =
+                        SchemaEvolutionUtil.createIndexCastMapping(
+                                Projection.of(projection).toTopLevelIndexes(),
+                                tableSchema.fields(),
+                                Projection.of(dataProjection).toTopLevelIndexes(),
+                                dataSchema.fields());
 
-                                Pair<int[], RowType> partitionPair = null;
-                                if (!dataSchema.partitionKeys().isEmpty()) {
-                                    Pair<int[], int[][]> partitionMappping =
-                                            PartitionUtils.constructPartitionMapping(
-                                                    dataSchema, dataProjection);
-                                    // if partition fields are not selected, we just do nothing
-                                    if (partitionMappping != null) {
-                                        dataProjection = partitionMappping.getRight();
-                                        partitionPair =
-                                                Pair.of(
-                                                        partitionMappping.getLeft(),
-                                                        dataSchema.projectedLogicalRowType(
-                                                                dataSchema.partitionKeys()));
-                                    }
-                                }
+                List<Predicate> dataFilters =
+                        this.schemaId == key.schemaId
+                                ? filters
+                                : SchemaEvolutionUtil.createDataFilters(
+                                        tableSchema.fields(), dataSchema.fields(), filters);
 
-                                RowType projectedRowType =
-                                        Projection.of(dataProjection)
-                                                .project(dataSchema.logicalRowType());
+                Pair<int[], RowType> partitionPair = null;
+                if (!dataSchema.partitionKeys().isEmpty()) {
+                    Pair<int[], int[][]> partitionMappping =
+                            PartitionUtils.constructPartitionMapping(dataSchema, dataProjection);
+                    // if partition fields are not selected, we just do nothing
+                    if (partitionMappping != null) {
+                        dataProjection = partitionMappping.getRight();
+                        partitionPair =
+                                Pair.of(
+                                        partitionMappping.getLeft(),
+                                        dataSchema.projectedLogicalRowType(
+                                                dataSchema.partitionKeys()));
+                    }
+                }
 
-                                return new BulkFormatMapping(
-                                        indexCastMapping.getIndexMapping(),
-                                        indexCastMapping.getCastMapping(),
-                                        partitionPair,
-                                        formatDiscover
-                                                .discover(formatIdentifier)
-                                                .createReaderFactory(
-                                                        projectedRowType, dataFilters));
-                            });
+                RowType projectedRowType =
+                        Projection.of(dataProjection).project(dataSchema.logicalRowType());
+
+                bulkFormatMappings.put(
+                        key,
+                        new BulkFormatMapping(
+                                indexCastMapping.getIndexMapping(),
+                                indexCastMapping.getCastMapping(),
+                                partitionPair,
+                                formatDiscover
+                                        .discover(formatIdentifier)
+                                        .createReaderFactory(projectedRowType, dataFilters)));
+            }
+            BulkFormatMapping bulkFormatMapping = bulkFormatMappings.get(key);
 
             final BinaryRow partition = split.partition();
             suppliers.add(

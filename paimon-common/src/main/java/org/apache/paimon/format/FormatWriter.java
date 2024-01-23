@@ -39,6 +39,19 @@ public interface FormatWriter {
     void addElement(InternalRow element) throws IOException;
 
     /**
+     * Adds an element to the encoder. The encoder may temporarily buffer the element, or
+     * immediately write it to the stream.
+     *
+     * <p>It may be that adding this element fills up an internal buffer and causes the encoding and
+     * flushing of a batch of internally buffered elements.
+     *
+     * @param element The element to add.
+     * @throws IOException Thrown, if the element cannot be added to the encoder, or if the output
+     *     stream throws an exception.
+     */
+    void writeMeta(String key, String value) throws IOException;
+
+    /**
      * Flushes all intermediate buffered data to the output stream. It is expected that flushing
      * often may reduce the efficiency of the encoding.
      *

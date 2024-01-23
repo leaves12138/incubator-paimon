@@ -36,6 +36,8 @@ public class DataFilePathFactory {
 
     public static final String BUCKET_PATH_PREFIX = "bucket-";
 
+    private static final String INDEX_PATH_PREFIX = "index-";
+
     private final Path bucketDir;
     private final String uuid;
 
@@ -56,6 +58,10 @@ public class DataFilePathFactory {
 
     public Path newChangelogPath() {
         return newPath(CHANGELOG_FILE_PREFIX);
+    }
+
+    public Path newIndexPath() {
+        return newPath(INDEX_PATH_PREFIX);
     }
 
     private Path newPath(String prefix) {

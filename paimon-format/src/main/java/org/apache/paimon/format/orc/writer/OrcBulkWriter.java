@@ -18,6 +18,8 @@
 
 package org.apache.paimon.format.orc.writer;
 
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import org.apache.paimon.annotation.VisibleForTesting;
 import org.apache.paimon.data.InternalRow;
 import org.apache.paimon.format.FormatWriter;
@@ -60,6 +62,11 @@ public class OrcBulkWriter implements FormatWriter {
             writer.addRowBatch(rowBatch);
             rowBatch.reset();
         }
+    }
+
+    @Override
+    public void writeMeta(String key, String value) throws IOException {
+        writer.addUserMetadata(key, ByteBuffer.wrap(value.getBytes(StandardCharsets.UTF_8)));
     }
 
     @Override

@@ -18,11 +18,13 @@
 
 package org.apache.paimon.io;
 
+import org.apache.paimon.CoreOptions;
 import org.apache.paimon.data.InternalRow;
 import org.apache.paimon.format.FormatWriterFactory;
 import org.apache.paimon.format.TableStatsExtractor;
 import org.apache.paimon.fs.FileIO;
 import org.apache.paimon.fs.Path;
+import org.apache.paimon.secondaryindex.IndexWriter;
 import org.apache.paimon.statistics.FieldStatsCollector;
 import org.apache.paimon.stats.BinaryTableStats;
 import org.apache.paimon.stats.FieldStatsArraySerializer;
@@ -32,6 +34,7 @@ import org.apache.paimon.utils.LongCounter;
 import javax.annotation.Nullable;
 
 import java.io.IOException;
+import java.util.List;
 import java.util.function.Function;
 
 /**
@@ -43,21 +46,24 @@ public class RowDataFileWriter extends StatsCollectingSingleFileWriter<InternalR
     private final long schemaId;
     private final LongCounter seqNumCounter;
     private final FieldStatsArraySerializer statsArraySerializer;
+    private final IndexWriter indexWriter;
 
     public RowDataFileWriter(
             FileIO fileIO,
             FormatWriterFactory factory,
-            Path path,
+            DataFilePathFactory pathFactory,
             RowType writeSchema,
             @Nullable TableStatsExtractor tableStatsExtractor,
             long schemaId,
             LongCounter seqNumCounter,
             String fileCompression,
-            FieldStatsCollector.Factory[] statsCollectors) {
+            FieldStatsCollector.Factory[] statsCollectors,
+            List<String> indexColumns,
+            CoreOptions.IndexType indexType) {
         super(
                 fileIO,
                 factory,
-                path,
+                pathFactory.newPath(),
                 Function.identity(),
                 writeSchema,
                 tableStatsExtractor,
@@ -66,12 +72,21 @@ public class RowDataFileWriter extends StatsCollectingSingleFileWriter<InternalR
         this.schemaId = schemaId;
         this.seqNumCounter = seqNumCounter;
         this.statsArraySerializer = new FieldStatsArraySerializer(writeSchema);
+        this.indexWriter = new IndexWriter(fileIO, writeSchema, indexColumns, indexType);
     }
 
     @Override
     public void write(InternalRow row) throws IOException {
         super.write(row);
+        // add row to index if needed
+        indexWriter.write(row);
         seqNumCounter.add(1L);
+    }
+
+    @Override
+    public void close() throws IOException {
+        writeMeta("index", indexWriter.getSerializedString());
+        super.close();
     }
 
     @Override
