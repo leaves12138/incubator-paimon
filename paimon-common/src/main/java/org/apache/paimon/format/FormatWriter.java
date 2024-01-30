@@ -45,7 +45,6 @@ public interface FormatWriter {
      * <p>It may be that adding this element fills up an internal buffer and causes the encoding and
      * flushing of a batch of internally buffered elements.
      *
-     * @param element The element to add.
      * @throws IOException Thrown, if the element cannot be added to the encoder, or if the output
      *     stream throws an exception.
      */

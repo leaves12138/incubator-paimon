@@ -18,8 +18,6 @@
 
 package org.apache.paimon.filter.bloomfilter;
 
-import java.nio.charset.StandardCharsets;
-import java.util.Base64;
 import org.apache.paimon.filter.FilterInterface;
 
 import org.apache.hadoop.util.bloom.Key;
@@ -29,8 +27,8 @@ import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
-import java.util.Arrays;
 
+/** Temp. */
 public class BloomFilter implements FilterInterface {
 
     org.apache.hadoop.util.bloom.BloomFilter filter =
@@ -38,18 +36,6 @@ public class BloomFilter implements FilterInterface {
     Key filterKey = new Key();
 
     public BloomFilter() {}
-
-    public BloomFilter(String serString) {
-        this.filter = new org.apache.hadoop.util.bloom.BloomFilter();
-        byte[] bytes = Base64.getDecoder().decode(serString.getBytes(StandardCharsets.UTF_8));
-        DataInputStream dis = new DataInputStream(new ByteArrayInputStream(bytes));
-        try {
-            this.filter.readFields(dis);
-            dis.close();
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-    }
 
     @Override
     public void add(byte[] key) {
@@ -64,7 +50,7 @@ public class BloomFilter implements FilterInterface {
     }
 
     @Override
-    public String serializeToString() {
+    public byte[] serializedBytes() {
         ByteArrayOutputStream baos = new ByteArrayOutputStream(filter.getVectorSize() / 8 + 1);
         DataOutputStream dos = new DataOutputStream(baos);
 
@@ -72,14 +58,14 @@ public class BloomFilter implements FilterInterface {
             filter.write(dos);
             byte[] bytes = baos.toByteArray();
             dos.close();
-            return new String(Base64.getEncoder().encode(bytes), StandardCharsets.UTF_8);
+            return bytes;
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
     }
 
-    public void fromSerializedString(String serString) {
-        byte[] bytes = Base64.getDecoder().decode(serString.getBytes(StandardCharsets.UTF_8));
+    @Override
+    public BloomFilter recoverFrom(byte[] bytes) {
         DataInputStream dis = new DataInputStream(new ByteArrayInputStream(bytes));
 
         try {
@@ -87,5 +73,6 @@ public class BloomFilter implements FilterInterface {
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
+        return this;
     }
 }

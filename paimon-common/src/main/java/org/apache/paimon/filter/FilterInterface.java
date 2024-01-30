@@ -18,13 +18,27 @@
 
 package org.apache.paimon.filter;
 
-import java.util.Arrays;
+import org.apache.paimon.filter.bloomfilter.BloomFilter;
 
+/** Temp. */
 public interface FilterInterface {
+
+    String BLOOM_FILTER = "BLOOM";
 
     void add(byte[] key);
 
     boolean test(byte[] key);
 
-    String serializeToString();
+    byte[] serializedBytes();
+
+    FilterInterface recoverFrom(byte[] bytes);
+
+    static FilterInterface getFilter(String type) {
+        switch (type) {
+            case BLOOM_FILTER:
+                return new BloomFilter();
+            default:
+                throw new RuntimeException();
+        }
+    }
 }

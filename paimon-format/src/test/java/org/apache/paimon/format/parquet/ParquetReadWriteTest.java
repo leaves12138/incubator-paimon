@@ -60,6 +60,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -229,6 +230,7 @@ public class ParquetReadWriteTest {
                         RowType.builder()
                                 .fields(fieldTypes, new String[] {"f7", "f2", "f4"})
                                 .build(),
+                        Collections.emptyList(),
                         500);
 
         AtomicInteger cnt = new AtomicInteger(0);
@@ -267,6 +269,7 @@ public class ParquetReadWriteTest {
                         RowType.builder()
                                 .fields(fieldTypes, new String[] {"f7", "f2", "f4", "f99"})
                                 .build(),
+                        Collections.emptyList(),
                         500);
 
         AtomicInteger cnt = new AtomicInteger(0);
@@ -344,7 +347,8 @@ public class ParquetReadWriteTest {
     }
 
     private int testReadingFile(List<Integer> expected, Path path) throws IOException {
-        ParquetReaderFactory format = new ParquetReaderFactory(new Options(), ROW_TYPE, 500);
+        ParquetReaderFactory format =
+                new ParquetReaderFactory(new Options(), ROW_TYPE, Collections.emptyList(), 500);
 
         // validate java serialization
         try {

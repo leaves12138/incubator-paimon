@@ -19,6 +19,8 @@
 package org.apache.paimon.operation;
 
 import org.apache.paimon.AppendOnlyFileStore;
+import org.apache.paimon.data.BinaryRow;
+import org.apache.paimon.filter.PredicateFilterUtil;
 import org.apache.paimon.manifest.ManifestEntry;
 import org.apache.paimon.manifest.ManifestFile;
 import org.apache.paimon.manifest.ManifestList;
@@ -83,15 +85,26 @@ public class AppendOnlyFileStoreScan extends AbstractFileStoreScan {
                 fieldStatsConverters.getOrCreate(entry.file().schemaId());
         BinaryTableStats stats = entry.file().valueStats();
         return filter.test(
-                entry.file().rowCount(),
-                serializer.evolution(stats.minValues()),
-                serializer.evolution(stats.maxValues()),
-                serializer.evolution(stats.nullCounts(), entry.file().rowCount()));
+                        entry.file().rowCount(),
+                        serializer.evolution(stats.minValues()),
+                        serializer.evolution(stats.maxValues()),
+                        serializer.evolution(stats.nullCounts(), entry.file().rowCount()))
+                && test(entry.file().filter());
     }
 
     @Override
     protected boolean filterWholeBucketByStats(List<ManifestEntry> entries) {
         // We don't need to filter per-bucket entries here
         return true;
+    }
+
+    private boolean test(BinaryRow filterRow) {
+        if (filterRow.getFieldCount() == 0 || filterRow.isNullAt(0)) {
+            return true;
+        }
+
+        byte[] serializedFilterBytes = filterRow.getBinary(0);
+
+        return PredicateFilterUtil.checkPredicate(serializedFilterBytes, filter);
     }
 }

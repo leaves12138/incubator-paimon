@@ -26,8 +26,10 @@ import org.apache.paimon.data.columnar.VectorizedColumnBatch;
 import org.apache.paimon.format.FormatReaderFactory;
 import org.apache.paimon.format.fs.HadoopReadOnlyFileSystem;
 import org.apache.paimon.format.orc.filter.OrcFilters;
+import org.apache.paimon.format.orc.filter.OrcPredicateFunctionVisitor;
 import org.apache.paimon.fs.FileIO;
 import org.apache.paimon.fs.Path;
+import org.apache.paimon.predicate.Predicate;
 import org.apache.paimon.reader.RecordReader.RecordIterator;
 import org.apache.paimon.types.DataType;
 import org.apache.paimon.types.RowType;
@@ -47,10 +49,14 @@ import org.apache.orc.TypeDescription;
 import javax.annotation.Nullable;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 import static org.apache.paimon.format.orc.reader.AbstractOrcColumnVector.createPaimonVector;
 import static org.apache.paimon.format.orc.reader.OrcSplitReaderUtil.toOrcType;
+import static org.apache.paimon.reader.EmptyReader.EMPTY_READER;
 import static org.apache.paimon.utils.Preconditions.checkNotNull;
 
 /** An ORC reader that produces a stream of {@link ColumnarRow} records. */
@@ -64,48 +70,65 @@ public class OrcReaderFactory implements FormatReaderFactory {
 
     private final RowType tableType;
 
+    protected final List<Predicate> filters;
+
     protected final List<OrcFilters.Predicate> conjunctPredicates;
 
     protected final int batchSize;
 
     /**
      * @param hadoopConfig the hadoop config for orc reader.
-     * @param conjunctPredicates the filter predicates that can be evaluated.
+     * @param filters the filter predicates.
      * @param batchSize the batch size of orc reader.
      */
     public OrcReaderFactory(
             final org.apache.hadoop.conf.Configuration hadoopConfig,
             final RowType readType,
-            final List<OrcFilters.Predicate> conjunctPredicates,
+            @Nullable final List<Predicate> filters,
             final int batchSize) {
         this.hadoopConfigWrapper = new SerializableHadoopConfigWrapper(checkNotNull(hadoopConfig));
         this.schema = toOrcType(readType);
         this.tableType = readType;
-        this.conjunctPredicates = checkNotNull(conjunctPredicates);
+        this.filters = filters;
         this.batchSize = batchSize;
+
+        conjunctPredicates = new ArrayList<>();
+
+        if (filters != null) {
+            for (Predicate pred : filters) {
+                Optional<OrcFilters.Predicate> orcPred =
+                        pred.visit(OrcPredicateFunctionVisitor.VISITOR);
+                orcPred.ifPresent(conjunctPredicates::add);
+            }
+        }
     }
 
     // ------------------------------------------------------------------------
 
     @Override
-    public OrcVectorizedReader createReader(FileIO fileIO, Path file) throws IOException {
+    public org.apache.paimon.reader.RecordReader<InternalRow> createReader(FileIO fileIO, Path file)
+            throws IOException {
         return createReader(fileIO, file, 1);
     }
 
     @Override
-    public OrcVectorizedReader createReader(FileIO fileIO, Path file, int poolSize)
-            throws IOException {
-        Pool<OrcReaderBatch> poolOfBatches = createPoolOfBatches(poolSize);
+    public org.apache.paimon.reader.RecordReader<InternalRow> createReader(
+            FileIO fileIO, Path file, int poolSize) throws IOException {
         RecordReader orcReader =
                 createRecordReader(
                         hadoopConfigWrapper.getHadoopConfig(),
                         schema,
+                        filters,
                         conjunctPredicates,
                         fileIO,
                         file,
                         0,
                         fileIO.getFileSize(file));
-        return new OrcVectorizedReader(orcReader, poolOfBatches);
+        if (orcReader == null) {
+            return EMPTY_READER;
+        }
+
+        return new OrcVectorizedReader(orcReader, createPoolOfBatches(poolSize));
     }
 
     /**
@@ -247,6 +270,7 @@ public class OrcReaderFactory implements FormatReaderFactory {
     private static RecordReader createRecordReader(
             org.apache.hadoop.conf.Configuration conf,
             TypeDescription schema,
+            List<Predicate> originPredicates,
             List<OrcFilters.Predicate> conjunctPredicates,
             FileIO fileIO,
             org.apache.paimon.fs.Path path,
@@ -255,6 +279,18 @@ public class OrcReaderFactory implements FormatReaderFactory {
             throws IOException {
         org.apache.orc.Reader orcReader = createReader(conf, fileIO, path);
         try {
+            if (originPredicates != null && !originPredicates.isEmpty()) {
+                String serializedString =
+                        new String(
+                                orcReader.getMetadataValue("index.bytes").array(),
+                                StandardCharsets.UTF_8);
+                //                if (!PredicateFilterUtil.checkPredicate(serializedString,
+                // originPredicates)) {
+                //                    orcReader.close();
+                //                    return null;
+                //                }
+            }
+
             // get offset and length for the stripes that start in the split
             Pair<Long, Long> offsetAndLength =
                     getOffsetAndLengthForSplit(splitStart, splitLength, orcReader.getStripes());

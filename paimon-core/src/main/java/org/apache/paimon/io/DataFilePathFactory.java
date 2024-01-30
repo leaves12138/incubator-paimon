@@ -36,7 +36,7 @@ public class DataFilePathFactory {
 
     public static final String BUCKET_PATH_PREFIX = "bucket-";
 
-    private static final String INDEX_PATH_PREFIX = "index-";
+    public static final String INDEX_PATH_PREFIX = "index-";
 
     private final Path bucketDir;
     private final String uuid;

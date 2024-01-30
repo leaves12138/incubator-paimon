@@ -18,22 +18,22 @@
 
 package org.apache.paimon.io;
 
-import org.apache.paimon.CoreOptions;
+import org.apache.paimon.data.BinaryRow;
 import org.apache.paimon.data.InternalRow;
 import org.apache.paimon.format.FormatWriterFactory;
 import org.apache.paimon.format.TableStatsExtractor;
 import org.apache.paimon.fs.FileIO;
-import org.apache.paimon.fs.Path;
-import org.apache.paimon.secondaryindex.IndexWriter;
 import org.apache.paimon.statistics.FieldStatsCollector;
 import org.apache.paimon.stats.BinaryTableStats;
 import org.apache.paimon.stats.FieldStatsArraySerializer;
 import org.apache.paimon.types.RowType;
 import org.apache.paimon.utils.LongCounter;
+import org.apache.paimon.utils.Pair;
 
 import javax.annotation.Nullable;
 
 import java.io.IOException;
+import java.util.Collections;
 import java.util.List;
 import java.util.function.Function;
 
@@ -59,7 +59,7 @@ public class RowDataFileWriter extends StatsCollectingSingleFileWriter<InternalR
             String fileCompression,
             FieldStatsCollector.Factory[] statsCollectors,
             List<String> indexColumns,
-            CoreOptions.IndexType indexType) {
+            String indexType) {
         super(
                 fileIO,
                 factory,
@@ -72,7 +72,8 @@ public class RowDataFileWriter extends StatsCollectingSingleFileWriter<InternalR
         this.schemaId = schemaId;
         this.seqNumCounter = seqNumCounter;
         this.statsArraySerializer = new FieldStatsArraySerializer(writeSchema);
-        this.indexWriter = new IndexWriter(fileIO, writeSchema, indexColumns, indexType);
+        this.indexWriter =
+                new IndexWriter(fileIO, pathFactory, writeSchema, indexColumns, indexType);
     }
 
     @Override
@@ -85,20 +86,25 @@ public class RowDataFileWriter extends StatsCollectingSingleFileWriter<InternalR
 
     @Override
     public void close() throws IOException {
-        writeMeta("index", indexWriter.getSerializedString());
+        indexWriter.close();
         super.close();
     }
 
     @Override
     public DataFileMeta result() throws IOException {
         BinaryTableStats stats = statsArraySerializer.toBinary(fieldStats());
+        Pair<BinaryRow, String> indexResult = indexWriter.result();
         return DataFileMeta.forAppend(
                 path.getName(),
                 fileIO.getFileSize(path),
                 recordCount(),
                 stats,
+                indexResult.getLeft(),
                 seqNumCounter.getValue() - super.recordCount(),
                 seqNumCounter.getValue() - 1,
-                schemaId);
+                schemaId,
+                indexResult.getRight() == null
+                        ? Collections.emptyList()
+                        : Collections.singletonList(indexResult.getRight()));
     }
 }

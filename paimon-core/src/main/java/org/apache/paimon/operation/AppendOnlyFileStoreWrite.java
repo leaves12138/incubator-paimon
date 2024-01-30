@@ -147,7 +147,8 @@ public class AppendOnlyFileStoreWrite extends MemoryFileStoreWrite<InternalRow> 
                 fileCompression,
                 statsCollectors,
                 getWriterMetrics(partition, bucket),
-                indexColumn);
+                indexColumn,
+                "bllom");
     }
 
     public AppendOnlyCompactManager.CompactRewriter compactRewriter(
@@ -167,7 +168,8 @@ public class AppendOnlyFileStoreWrite extends MemoryFileStoreWrite<InternalRow> 
                             new LongCounter(toCompact.get(0).minSequenceNumber()),
                             fileCompression,
                             statsCollectors,
-                            indexColumn);
+                            indexColumn,
+                            "");
             try {
                 rewriter.write(
                         new RecordReaderIterator<>(

@@ -22,6 +22,7 @@ import org.apache.paimon.annotation.Documentation;
 import org.apache.paimon.annotation.Documentation.ExcludeFromDocumentation;
 import org.apache.paimon.annotation.Documentation.Immutable;
 import org.apache.paimon.annotation.VisibleForTesting;
+import org.apache.paimon.filter.FilterInterface;
 import org.apache.paimon.format.FileFormat;
 import org.apache.paimon.fs.Path;
 import org.apache.paimon.options.ConfigOption;
@@ -492,10 +493,10 @@ public class CoreOptions implements Serializable {
                     .noDefaultValue()
                     .withDescription("The secondary index columns.");
 
-    public static final ConfigOption<IndexType> INDEX_TYPE =
+    public static final ConfigOption<String> INDEX_TYPE =
             key("index.type")
-                    .enumType(IndexType.class)
-                    .defaultValue(IndexType.BLOOM_FILTER)
+                    .stringType()
+                    .defaultValue(FilterInterface.BLOOM_FILTER)
                     .withDescription("The secondary index type.");
 
     public static final ConfigOption<String> SEQUENCE_AUTO_PADDING =
@@ -1671,7 +1672,7 @@ public class CoreOptions implements Serializable {
                 : Arrays.asList(columns.split(","));
     }
 
-    public IndexType indexType() {
+    public String indexType() {
         return options.get(INDEX_TYPE);
     }
 
@@ -2275,30 +2276,6 @@ public class CoreOptions implements Serializable {
         private final String description;
 
         ConsumerMode(String value, String description) {
-            this.value = value;
-            this.description = description;
-        }
-
-        @Override
-        public String toString() {
-            return value;
-        }
-
-        @Override
-        public InlineElement getDescription() {
-            return text(description);
-        }
-    }
-
-    /** Index type. */
-    public enum IndexType implements DescribedEnum {
-
-        BLOOM_FILTER("bloom-filter", "");
-
-        private final String value;
-        private final String description;
-
-        IndexType(String value, String description) {
             this.value = value;
             this.description = description;
         }

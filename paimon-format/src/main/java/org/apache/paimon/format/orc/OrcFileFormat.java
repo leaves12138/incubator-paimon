@@ -25,8 +25,6 @@ import org.apache.paimon.format.FileFormatFactory.FormatContext;
 import org.apache.paimon.format.FormatReaderFactory;
 import org.apache.paimon.format.FormatWriterFactory;
 import org.apache.paimon.format.TableStatsExtractor;
-import org.apache.paimon.format.orc.filter.OrcFilters;
-import org.apache.paimon.format.orc.filter.OrcPredicateFunctionVisitor;
 import org.apache.paimon.format.orc.filter.OrcTableStatsExtractor;
 import org.apache.paimon.format.orc.reader.OrcSplitReaderUtil;
 import org.apache.paimon.format.orc.writer.RowDataVectorizer;
@@ -48,7 +46,6 @@ import org.apache.orc.TypeDescription;
 import javax.annotation.Nullable;
 import javax.annotation.concurrent.ThreadSafe;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.Properties;
@@ -97,20 +94,10 @@ public class OrcFileFormat extends FileFormat {
     @Override
     public FormatReaderFactory createReaderFactory(
             RowType projectedRowType, @Nullable List<Predicate> filters) {
-        List<OrcFilters.Predicate> orcPredicates = new ArrayList<>();
-
-        if (filters != null) {
-            for (Predicate pred : filters) {
-                Optional<OrcFilters.Predicate> orcPred =
-                        pred.visit(OrcPredicateFunctionVisitor.VISITOR);
-                orcPred.ifPresent(orcPredicates::add);
-            }
-        }
-
         return new OrcReaderFactory(
                 readerConf,
                 (RowType) refineDataType(projectedRowType),
-                orcPredicates,
+                filters,
                 formatContext.readBatchSize());
     }
 

@@ -18,8 +18,6 @@
 
 package org.apache.paimon.format.orc.writer;
 
-import java.nio.ByteBuffer;
-import java.nio.charset.StandardCharsets;
 import org.apache.paimon.annotation.VisibleForTesting;
 import org.apache.paimon.data.InternalRow;
 import org.apache.paimon.format.FormatWriter;
@@ -29,6 +27,8 @@ import org.apache.hadoop.hive.ql.exec.vector.VectorizedRowBatch;
 import org.apache.orc.Writer;
 
 import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 
 import static org.apache.paimon.utils.Preconditions.checkNotNull;
 

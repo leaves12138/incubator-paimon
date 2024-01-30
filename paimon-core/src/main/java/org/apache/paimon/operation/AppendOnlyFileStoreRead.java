@@ -21,6 +21,7 @@ package org.apache.paimon.operation;
 import org.apache.paimon.AppendOnlyFileStore;
 import org.apache.paimon.data.BinaryRow;
 import org.apache.paimon.data.InternalRow;
+import org.apache.paimon.filter.PredicateFilterUtil;
 import org.apache.paimon.format.FileFormatDiscover;
 import org.apache.paimon.format.FormatKey;
 import org.apache.paimon.fs.FileIO;
@@ -30,12 +31,12 @@ import org.apache.paimon.io.RowDataFileRecordReader;
 import org.apache.paimon.mergetree.compact.ConcatRecordReader;
 import org.apache.paimon.partition.PartitionUtils;
 import org.apache.paimon.predicate.Predicate;
+import org.apache.paimon.predicate.PredicateBuilder;
 import org.apache.paimon.reader.RecordReader;
 import org.apache.paimon.schema.IndexCastMapping;
 import org.apache.paimon.schema.SchemaEvolutionUtil;
 import org.apache.paimon.schema.SchemaManager;
 import org.apache.paimon.schema.TableSchema;
-import org.apache.paimon.secondaryindex.Util;
 import org.apache.paimon.table.source.DataSplit;
 import org.apache.paimon.types.RowType;
 import org.apache.paimon.utils.BulkFormatMapping;
@@ -53,6 +54,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 import static org.apache.paimon.predicate.PredicateBuilder.splitAnd;
 
@@ -133,6 +135,22 @@ public class AppendOnlyFileStoreRead implements FileStoreRead<InternalRow> {
                                 ? filters
                                 : SchemaEvolutionUtil.createDataFilters(
                                         tableSchema.fields(), dataSchema.fields(), filters);
+
+                if (dataFilters != null && !dataFilters.isEmpty()) {
+                    List<String> indexFiles =
+                            file.extraFiles().stream()
+                                    .filter(
+                                            name ->
+                                                    name.startsWith(
+                                                            DataFilePathFactory.INDEX_PATH_PREFIX))
+                                    .collect(Collectors.toList());
+                    if (!indexFiles.isEmpty()) {
+                        PredicateFilterUtil.checkPredicate(
+                                dataFilePathFactory.toPath(indexFiles.get(0)),
+                                fileIO,
+                                PredicateBuilder.and(dataFilters.toArray(new Predicate[0])));
+                    }
+                }
 
                 Pair<int[], RowType> partitionPair = null;
                 if (!dataSchema.partitionKeys().isEmpty()) {

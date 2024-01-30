@@ -66,7 +66,7 @@ public class AvroFileFormat extends FileFormat {
     @Override
     public FormatReaderFactory createReaderFactory(
             RowType projectedRowType, @Nullable List<Predicate> filters) {
-        return new AvroBulkFormat(projectedRowType);
+        return new AvroBulkFormat(projectedRowType, filters);
     }
 
     @Override
@@ -122,9 +122,7 @@ public class AvroFileFormat extends FileFormat {
                 }
 
                 @Override
-                public void writeMeta(String key, String value) throws IOException {
-
-                }
+                public void writeMeta(String key, String value) throws IOException {}
 
                 @Override
                 public void flush() throws IOException {

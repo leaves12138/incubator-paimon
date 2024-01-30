@@ -22,6 +22,7 @@ import org.apache.paimon.data.InternalRow;
 import org.apache.paimon.format.FormatReaderFactory;
 import org.apache.paimon.fs.FileIO;
 import org.apache.paimon.fs.Path;
+import org.apache.paimon.predicate.Predicate;
 import org.apache.paimon.reader.RecordReader;
 import org.apache.paimon.types.RowType;
 import org.apache.paimon.utils.IOUtils;
@@ -36,6 +37,7 @@ import javax.annotation.Nullable;
 
 import java.io.IOException;
 import java.util.Iterator;
+import java.util.List;
 
 /** Provides a {@link FormatReaderFactory} for Avro records. */
 public class AvroBulkFormat implements FormatReaderFactory {
@@ -44,13 +46,16 @@ public class AvroBulkFormat implements FormatReaderFactory {
 
     protected final RowType projectedRowType;
 
-    public AvroBulkFormat(RowType projectedRowType) {
+    private final List<Predicate> filters;
+
+    public AvroBulkFormat(RowType projectedRowType, List<Predicate> filters) {
         this.projectedRowType = projectedRowType;
+        this.filters = filters;
     }
 
     @Override
     public RecordReader<InternalRow> createReader(FileIO fileIO, Path file) throws IOException {
-        return new AvroReader(fileIO, file);
+        return createAvroReader(fileIO, file);
     }
 
     @Override
@@ -59,34 +64,44 @@ public class AvroBulkFormat implements FormatReaderFactory {
         throw new UnsupportedOperationException();
     }
 
+    private RecordReader<InternalRow> createAvroReader(FileIO fileIO, Path path)
+            throws IOException {
+        DatumReader<InternalRow> datumReader = new AvroRowDatumReader(projectedRowType);
+        SeekableInput in =
+                new SeekableInputStreamWrapper(
+                        fileIO.newInputStream(path), fileIO.getFileSize(path));
+
+        try {
+            DataFileReader<InternalRow> avroReader =
+                    (DataFileReader<InternalRow>) DataFileReader.openReader(in, datumReader);
+            //            if (filters != null && !filters.isEmpty()) {
+            //                String serializedString = avroReader.getMetaString("index.bytes");
+            //                if (!PredicateFilterUtil.checkPredicate(serializedString, filters)) {
+            //                    IOUtils.closeQuietly(in);
+            //                    return EmptyReader.EMPTY_READER;
+            //                }
+            //            }
+            return new AvroReader(fileIO, path, avroReader);
+        } catch (Throwable e) {
+            IOUtils.closeQuietly(in);
+            throw e;
+        }
+    }
+
     private class AvroReader implements RecordReader<InternalRow> {
 
-        private final FileIO fileIO;
         private final DataFileReader<InternalRow> reader;
 
         private final long end;
         private final Pool<Object> pool;
 
-        private AvroReader(FileIO fileIO, Path path) throws IOException {
-            this.fileIO = fileIO;
-            this.reader = createReaderFromPath(path);
+        private AvroReader(FileIO fileIO, Path path, DataFileReader<InternalRow> reader)
+                throws IOException {
+            this.reader = reader;
             this.reader.sync(0);
             this.end = fileIO.getFileSize(path);
             this.pool = new Pool<>(1);
             this.pool.add(new Object());
-        }
-
-        private DataFileReader<InternalRow> createReaderFromPath(Path path) throws IOException {
-            DatumReader<InternalRow> datumReader = new AvroRowDatumReader(projectedRowType);
-            SeekableInput in =
-                    new SeekableInputStreamWrapper(
-                            fileIO.newInputStream(path), fileIO.getFileSize(path));
-            try {
-                return (DataFileReader<InternalRow>) DataFileReader.openReader(in, datumReader);
-            } catch (Throwable e) {
-                IOUtils.closeQuietly(in);
-                throw e;
-            }
         }
 
         @Nullable

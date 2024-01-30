@@ -52,6 +52,7 @@ public class DataFileMeta {
     // the following dummy values.
     public static final BinaryTableStats EMPTY_KEY_STATS =
             new BinaryTableStats(EMPTY_ROW, EMPTY_ROW, BinaryArray.fromLongArray(new Long[0]));
+    private static final BinaryRow EMPTY_FILTER = EMPTY_ROW;
     public static final BinaryRow EMPTY_MIN_KEY = EMPTY_ROW;
     public static final BinaryRow EMPTY_MAX_KEY = EMPTY_ROW;
     public static final int DUMMY_LEVEL = 0;
@@ -60,6 +61,7 @@ public class DataFileMeta {
     private final long fileSize;
     private final long rowCount;
 
+    private final BinaryRow filter;
     private final BinaryRow minKey;
     private final BinaryRow maxKey;
     private final BinaryTableStats keyStats;
@@ -78,13 +80,16 @@ public class DataFileMeta {
             long fileSize,
             long rowCount,
             BinaryTableStats rowStats,
+            BinaryRow filter,
             long minSequenceNumber,
             long maxSequenceNumber,
-            long schemaId) {
+            long schemaId,
+            List<String> extraFiles) {
         return new DataFileMeta(
                 fileName,
                 fileSize,
                 rowCount,
+                filter,
                 EMPTY_MIN_KEY,
                 EMPTY_MAX_KEY,
                 EMPTY_KEY_STATS,
@@ -92,13 +97,46 @@ public class DataFileMeta {
                 minSequenceNumber,
                 maxSequenceNumber,
                 schemaId,
-                DUMMY_LEVEL);
+                DUMMY_LEVEL,
+                extraFiles);
     }
 
     public DataFileMeta(
             String fileName,
             long fileSize,
             long rowCount,
+            BinaryRow filter,
+            BinaryRow minKey,
+            BinaryRow maxKey,
+            BinaryTableStats keyStats,
+            BinaryTableStats valueStats,
+            long minSequenceNumber,
+            long maxSequenceNumber,
+            long schemaId,
+            int level,
+            List<String> extraFiles) {
+        this(
+                fileName,
+                fileSize,
+                rowCount,
+                filter,
+                minKey,
+                maxKey,
+                keyStats,
+                valueStats,
+                minSequenceNumber,
+                maxSequenceNumber,
+                schemaId,
+                level,
+                extraFiles,
+                Timestamp.fromLocalDateTime(LocalDateTime.now()).toMillisTimestamp());
+    }
+
+    public DataFileMeta(
+            String fileName,
+            long fileSize,
+            long rowCount,
+            BinaryRow filter,
             BinaryRow minKey,
             BinaryRow maxKey,
             BinaryTableStats keyStats,
@@ -111,6 +149,7 @@ public class DataFileMeta {
                 fileName,
                 fileSize,
                 rowCount,
+                filter,
                 minKey,
                 maxKey,
                 keyStats,
@@ -127,6 +166,7 @@ public class DataFileMeta {
             String fileName,
             long fileSize,
             long rowCount,
+            BinaryRow filter,
             BinaryRow minKey,
             BinaryRow maxKey,
             BinaryTableStats keyStats,
@@ -141,6 +181,7 @@ public class DataFileMeta {
         this.fileSize = fileSize;
         this.rowCount = rowCount;
 
+        this.filter = filter;
         this.minKey = minKey;
         this.maxKey = maxKey;
         this.keyStats = keyStats;
@@ -164,6 +205,10 @@ public class DataFileMeta {
 
     public long rowCount() {
         return rowCount;
+    }
+
+    public BinaryRow filter() {
+        return filter;
     }
 
     public BinaryRow minKey() {
@@ -241,6 +286,7 @@ public class DataFileMeta {
                 fileName,
                 fileSize,
                 rowCount,
+                filter,
                 minKey,
                 maxKey,
                 keyStats,
@@ -265,6 +311,7 @@ public class DataFileMeta {
                 fileName,
                 fileSize,
                 rowCount,
+                filter,
                 minKey,
                 maxKey,
                 keyStats,

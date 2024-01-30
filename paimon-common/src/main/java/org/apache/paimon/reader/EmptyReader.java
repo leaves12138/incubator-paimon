@@ -16,23 +16,26 @@
  * limitations under the License.
  */
 
-package org.apache.paimon.io;
+package org.apache.paimon.reader;
 
-import java.util.List;
+import org.apache.paimon.data.InternalRow;
 
-public class IndexFile {
+import javax.annotation.Nullable;
 
-    private IndexType type;
-    private List<String> columnName;
-    private String indexFileName;
+import java.io.IOException;
 
-    enum IndexType {
-        BLOOM_FILTER(0);
+/** Empty record reader. */
+public class EmptyReader {
 
-        private int typeIndex;
+    public static final RecordReader<InternalRow> EMPTY_READER =
+            new RecordReader<InternalRow>() {
+                @Nullable
+                @Override
+                public RecordIterator<InternalRow> readBatch() throws IOException {
+                    return null;
+                }
 
-        IndexType(int typeIndex) {
-            this.typeIndex = typeIndex;
-        }
-    }
+                @Override
+                public void close() throws IOException {}
+            };
 }
