@@ -47,7 +47,7 @@ public final class IndexWriter {
 
     private final DataFilePathFactory pathFactory;
 
-    private String indexType;
+    private final String indexType;
 
     private final List<IndexMaintainer> indexMaintainers = new ArrayList<>();
 

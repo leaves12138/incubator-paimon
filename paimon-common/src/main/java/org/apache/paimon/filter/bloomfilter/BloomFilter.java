@@ -31,9 +31,10 @@ import java.io.IOException;
 /** Temp. */
 public class BloomFilter implements FilterInterface {
 
-    org.apache.hadoop.util.bloom.BloomFilter filter =
-            new org.apache.hadoop.util.bloom.BloomFilter();
-    Key filterKey = new Key();
+    private final org.apache.hadoop.util.bloom.DynamicBloomFilter filter =
+            new org.apache.hadoop.util.bloom.DynamicBloomFilter();
+    // reuse
+    private final Key filterKey = new Key();
 
     public BloomFilter() {}
 
@@ -51,7 +52,7 @@ public class BloomFilter implements FilterInterface {
 
     @Override
     public byte[] serializedBytes() {
-        ByteArrayOutputStream baos = new ByteArrayOutputStream(filter.getVectorSize() / 8 + 1);
+        ByteArrayOutputStream baos = new ByteArrayOutputStream(1024);
         DataOutputStream dos = new DataOutputStream(baos);
 
         try {
@@ -74,5 +75,19 @@ public class BloomFilter implements FilterInterface {
             throw new RuntimeException(e);
         }
         return this;
+    }
+
+    /**
+     * @return m = -\frac{n \ln{p}}{(\ln{2})^2}, n for number, p for errorRate
+     */
+    static int getBitSize(int number, double errorRate) {
+        return (int) Math.ceil(number * (-Math.log(errorRate) / Math.log(2) * Math.log(2)));
+    }
+
+    /**
+     * @return k = \frac{m}{n} \ln{2}, m for bitsize, n for number
+     */
+    static int getNumHashes(int bitSize, int number) {
+        return (int) Math.ceil(Math.log(2) * bitSize / number);
     }
 }
