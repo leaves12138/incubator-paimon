@@ -19,9 +19,9 @@
 package org.apache.paimon.format.orc;
 
 import org.apache.paimon.data.InternalRow;
+import org.apache.paimon.format.orc.filter.OrcFilters;
 import org.apache.paimon.fs.Path;
 import org.apache.paimon.fs.local.LocalFileIO;
-import org.apache.paimon.predicate.Predicate;
 import org.apache.paimon.reader.RecordReader;
 import org.apache.paimon.types.DataType;
 import org.apache.paimon.types.DataTypes;
@@ -233,11 +233,13 @@ class OrcReaderFactoryTest {
     }
 
     protected OrcReaderFactory createFormat(
-            RowType formatType, int[] selectedFields, List<Predicate> filters) {
+            RowType formatType,
+            int[] selectedFields,
+            List<OrcFilters.Predicate> conjunctPredicates) {
         return new OrcReaderFactory(
                 new Configuration(),
                 Projection.of(selectedFields).project(formatType),
-                filters,
+                conjunctPredicates,
                 BATCH_SIZE);
     }
 

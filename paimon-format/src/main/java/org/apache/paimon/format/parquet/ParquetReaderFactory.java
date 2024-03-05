@@ -79,14 +79,12 @@ public class ParquetReaderFactory implements FormatReaderFactory {
     private final DataType[] projectedTypes;
     private final int batchSize;
     private final Set<Integer> unknownFieldsIndices = new HashSet<>();
-    @Nullable private final List<Predicate> filters;
 
     public ParquetReaderFactory(
-            Options conf, RowType projectedType, @Nullable List<Predicate> filters, int batchSize) {
+            Options conf, RowType projectedType, int batchSize) {
         this.conf = conf;
         this.projectedFields = projectedType.getFieldNames().toArray(new String[0]);
         this.projectedTypes = projectedType.getFieldTypes().toArray(new DataType[0]);
-        this.filters = filters;
         this.batchSize = batchSize;
     }
 
@@ -101,14 +99,6 @@ public class ParquetReaderFactory implements FormatReaderFactory {
 
         ParquetFileReader reader =
                 new ParquetFileReader(ParquetInputFile.fromPath(fileIO, filePath), builder.build());
-        if (filters != null && !filters.isEmpty()) {
-            String serializedString =
-                    reader.getFileMetaData().getKeyValueMetaData().get("index.bytes");
-            //            if (!PredicateFilterUtil.checkPredicate(serializedString, filters)) {
-            //                reader.close();
-            //                return EmptyReader.EMPTY_READER;
-            //            }
-        }
         MessageType fileSchema = reader.getFileMetaData().getSchema();
         MessageType requestedSchema = clipParquetSchema(fileSchema);
         reader.setRequestedSchema(requestedSchema);

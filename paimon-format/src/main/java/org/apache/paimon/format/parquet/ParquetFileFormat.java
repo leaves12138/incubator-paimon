@@ -56,7 +56,6 @@ public class ParquetFileFormat extends FileFormat {
         return new ParquetReaderFactory(
                 getParquetConfiguration(formatContext.formatOptions()),
                 projectedRowType,
-                filters,
                 formatContext.readBatchSize());
     }
 

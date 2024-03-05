@@ -18,6 +18,7 @@
 
 package org.apache.paimon.format;
 
+import java.util.Collections;
 import org.apache.paimon.CoreOptions;
 import org.apache.paimon.append.AppendOnlyCompactManager;
 import org.apache.paimon.append.AppendOnlyWriter;
@@ -86,7 +87,9 @@ public class FileFormatSuffixTest extends KeyValueFileReadWriteTest {
                         CoreOptions.FILE_COMPRESSION.defaultValue(),
                         StatsCollectorFactories.createStatsFactories(
                                 options, SCHEMA.getFieldNames()),
-                        null);
+                        null,
+                        Collections.emptyList(),
+                        "");
         appendOnlyWriter.setMemoryPool(
                 new HeapMemorySegmentPool(options.writeBufferSize(), options.pageSize()));
         appendOnlyWriter.write(
