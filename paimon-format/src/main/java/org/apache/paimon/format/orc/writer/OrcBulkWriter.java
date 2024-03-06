@@ -65,11 +65,6 @@ public class OrcBulkWriter implements FormatWriter {
     }
 
     @Override
-    public void writeMeta(String key, String value) throws IOException {
-        writer.addUserMetadata(key, ByteBuffer.wrap(value.getBytes(StandardCharsets.UTF_8)));
-    }
-
-    @Override
     public void flush() throws IOException {
         if (rowBatch.size != 0) {
             writer.addRowBatch(rowBatch);

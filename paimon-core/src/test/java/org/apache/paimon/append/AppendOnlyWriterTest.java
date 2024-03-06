@@ -587,8 +587,10 @@ public class AppendOnlyWriterTest {
                                     0),
                             initStats(PART, PART, 0)
                         }),
+                BinaryRow.EMPTY_ROW,
                 minSeq,
                 maxSeq,
-                toCompact.get(0).schemaId());
+                toCompact.get(0).schemaId(),
+                Collections.emptyList());
     }
 }

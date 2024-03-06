@@ -18,6 +18,7 @@
 
 package org.apache.paimon.filter.bloomfilter;
 
+import org.apache.hadoop.util.hash.Hash;
 import org.apache.paimon.filter.FilterInterface;
 
 import org.apache.hadoop.util.bloom.Key;
@@ -31,8 +32,10 @@ import java.io.IOException;
 /** Temp. */
 public class BloomFilter implements FilterInterface {
 
-    private final org.apache.hadoop.util.bloom.DynamicBloomFilter filter =
-            new org.apache.hadoop.util.bloom.DynamicBloomFilter();
+    private static final int HASH_NUMBER = 3;
+
+    private final HadoopDynamicBloomFilter filter =
+            new HadoopDynamicBloomFilter(50 * 8, HASH_NUMBER, Hash.MURMUR_HASH, 50);
     // reuse
     private final Key filterKey = new Key();
 

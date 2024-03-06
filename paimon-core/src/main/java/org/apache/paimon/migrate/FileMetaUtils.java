@@ -163,9 +163,11 @@ public class FileMetaUtils {
                 fileSize,
                 fileInfo.getRight().getRowCount(),
                 stats,
+                BinaryRow.EMPTY_ROW,
                 0,
                 0,
-                ((FileStoreTable) table).schema().id());
+                ((FileStoreTable) table).schema().id(),
+                Collections.emptyList());
     }
 
     public static BinaryRow writePartitionValue(

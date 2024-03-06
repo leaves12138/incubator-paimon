@@ -311,7 +311,16 @@ public class UnawareBucketAppendOnlyTableITCase extends CatalogITCaseBase {
         return Arrays.asList(
                 "CREATE TABLE IF NOT EXISTS append_table (id INT, data STRING) WITH ('bucket' = '-1')",
                 "CREATE TABLE IF NOT EXISTS part_table (id INT, data STRING, dt STRING) PARTITIONED BY (dt) WITH ('bucket' = '-1')",
-                "CREATE TABLE IF NOT EXISTS complex_table (id INT, data MAP<INT, INT>) WITH ('bucket' = '-1')");
+                "CREATE TABLE IF NOT EXISTS complex_table (id INT, data MAP<INT, INT>) WITH ('bucket' = '-1')",
+                "CREATE TABLE IF NOT EXISTS index_table (id INT, indexc STRING, data STRING) WITH ('bucket' = '-1', 'index.columns'='indexc', 'index.type'='BLOOM')");
+    }
+
+    @Test
+    public void testSkipDedup2() {
+        batchSql("INSERT INTO index_table VALUES (1, 'a', 'AAA'), (1, 'a', 'AAA'), (2, 'b', 'BBB'), (3, 'b', 'BBB')");
+
+
+        return;
     }
 
     @Override

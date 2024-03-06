@@ -88,15 +88,13 @@ public final class IndexWriter {
 
         if (serializedBytes.length > INDEX_SIZE_IN_META) {
             resultRow = BinaryRow.EMPTY_ROW;
-
             Path path = pathFactory.newIndexPath();
-
             try (OutputStream outputStream = fileIO.newOutputStream(path, false)) {
                 outputStream.write(serializedBytes);
             }
-
             resultFileName = path.getName();
 
+        } else {
             resultRow = new BinaryRow(1);
             BinaryRowWriter binaryRowWriter = new BinaryRowWriter(resultRow);
             binaryRowWriter.writeBinary(0, serializedBytes);

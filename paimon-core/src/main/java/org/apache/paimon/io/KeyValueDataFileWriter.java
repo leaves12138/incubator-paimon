@@ -155,6 +155,7 @@ public class KeyValueDataFileWriter
                 path.getName(),
                 fileIO.getFileSize(path),
                 recordCount(),
+                BinaryRow.EMPTY_ROW,
                 minKey,
                 keySerializer.toBinaryRow(maxKey).copy(),
                 keyStats,

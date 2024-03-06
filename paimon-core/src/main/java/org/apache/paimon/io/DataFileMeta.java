@@ -52,7 +52,7 @@ public class DataFileMeta {
     // the following dummy values.
     public static final BinaryTableStats EMPTY_KEY_STATS =
             new BinaryTableStats(EMPTY_ROW, EMPTY_ROW, BinaryArray.fromLongArray(new Long[0]));
-    private static final BinaryRow EMPTY_FILTER = EMPTY_ROW;
+    public static final BinaryRow EMPTY_FILTER = EMPTY_ROW;
     public static final BinaryRow EMPTY_MIN_KEY = EMPTY_ROW;
     public static final BinaryRow EMPTY_MAX_KEY = EMPTY_ROW;
     public static final int DUMMY_LEVEL = 0;

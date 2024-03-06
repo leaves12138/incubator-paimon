@@ -38,7 +38,8 @@ public interface FilterInterface {
             case BLOOM_FILTER:
                 return new BloomFilter();
             default:
-                throw new RuntimeException();
+                return new BloomFilter();
+//                throw new RuntimeException();
         }
     }
 }
