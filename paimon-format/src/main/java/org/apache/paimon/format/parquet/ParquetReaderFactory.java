@@ -31,7 +31,6 @@ import org.apache.paimon.format.parquet.reader.ParquetTimestampVector;
 import org.apache.paimon.fs.FileIO;
 import org.apache.paimon.fs.Path;
 import org.apache.paimon.options.Options;
-import org.apache.paimon.predicate.Predicate;
 import org.apache.paimon.reader.RecordReader;
 import org.apache.paimon.reader.RecordReader.RecordIterator;
 import org.apache.paimon.types.DataType;
@@ -80,8 +79,7 @@ public class ParquetReaderFactory implements FormatReaderFactory {
     private final int batchSize;
     private final Set<Integer> unknownFieldsIndices = new HashSet<>();
 
-    public ParquetReaderFactory(
-            Options conf, RowType projectedType, int batchSize) {
+    public ParquetReaderFactory(Options conf, RowType projectedType, int batchSize) {
         this.conf = conf;
         this.projectedFields = projectedType.getFieldNames().toArray(new String[0]);
         this.projectedTypes = projectedType.getFieldTypes().toArray(new DataType[0]);

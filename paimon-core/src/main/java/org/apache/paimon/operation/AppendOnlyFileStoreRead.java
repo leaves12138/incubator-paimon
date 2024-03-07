@@ -145,10 +145,12 @@ public class AppendOnlyFileStoreRead implements FileStoreRead<InternalRow> {
                                                             DataFilePathFactory.INDEX_PATH_PREFIX))
                                     .collect(Collectors.toList());
                     if (!indexFiles.isEmpty()) {
-                        PredicateFilterUtil.checkPredicate(
+                        if (!PredicateFilterUtil.checkPredicate(
                                 dataFilePathFactory.toPath(indexFiles.get(0)),
                                 fileIO,
-                                PredicateBuilder.and(dataFilters.toArray(new Predicate[0])));
+                                PredicateBuilder.and(dataFilters.toArray(new Predicate[0])))) {
+                            continue;
+                        }
                     }
                 }
 

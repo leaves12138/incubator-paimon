@@ -20,14 +20,56 @@ package org.apache.paimon.filter;
 
 import org.apache.paimon.filter.bloomfilter.BloomFilter;
 
-/** Temp. */
-public interface FilterInterface {
+import static org.apache.paimon.filter.bloomfilter.BloomFilter.BLOOM_FILTER;
 
-    String BLOOM_FILTER = "BLOOM";
+/**
+ * Secondary index filter interface. Return true, means we need to search this file, else means
+ * needn't.
+ */
+public interface FilterInterface {
 
     void add(byte[] key);
 
-    boolean test(byte[] key);
+    default boolean testStartsWith(byte[] key) {
+        return true;
+    }
+
+    default boolean testLessThan(byte[] key) {
+        return true;
+    }
+
+    default boolean testGreaterOrEqual(byte[] key) {
+        return true;
+    }
+
+    default boolean testNotEqual(byte[] key) {
+        return true;
+    }
+
+    default boolean testLessOrEqual(byte[] key) {
+        return true;
+    }
+
+    default boolean testEqual(byte[] key) {
+        return true;
+    }
+
+    default boolean testGreaterThan(byte[] key) {
+        return true;
+    }
+
+    default boolean testIn(byte[][] keys) {
+        for (byte[] key : keys) {
+            if (testEqual(key)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    default boolean testNotIn(byte[][] keys) {
+        return !testIn(keys);
+    }
 
     byte[] serializedBytes();
 
@@ -38,8 +80,7 @@ public interface FilterInterface {
             case BLOOM_FILTER:
                 return new BloomFilter();
             default:
-                return new BloomFilter();
-//                throw new RuntimeException();
+                throw new RuntimeException();
         }
     }
 }

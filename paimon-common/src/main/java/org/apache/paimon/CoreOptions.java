@@ -22,7 +22,7 @@ import org.apache.paimon.annotation.Documentation;
 import org.apache.paimon.annotation.Documentation.ExcludeFromDocumentation;
 import org.apache.paimon.annotation.Documentation.Immutable;
 import org.apache.paimon.annotation.VisibleForTesting;
-import org.apache.paimon.filter.FilterInterface;
+import org.apache.paimon.filter.bloomfilter.BloomFilter;
 import org.apache.paimon.format.FileFormat;
 import org.apache.paimon.fs.Path;
 import org.apache.paimon.options.ConfigOption;
@@ -496,7 +496,7 @@ public class CoreOptions implements Serializable {
     public static final ConfigOption<String> INDEX_TYPE =
             key("index.type")
                     .stringType()
-                    .defaultValue(FilterInterface.BLOOM_FILTER)
+                    .defaultValue(BloomFilter.BLOOM_FILTER)
                     .withDescription("The secondary index type.");
 
     public static final ConfigOption<String> SEQUENCE_AUTO_PADDING =

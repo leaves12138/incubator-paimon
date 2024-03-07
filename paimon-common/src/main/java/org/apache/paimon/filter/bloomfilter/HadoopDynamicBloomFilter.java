@@ -18,49 +18,39 @@
 
 package org.apache.paimon.filter.bloomfilter;
 
+import org.apache.hadoop.classification.InterfaceAudience;
+import org.apache.hadoop.classification.InterfaceStability;
+import org.apache.hadoop.util.bloom.Key;
 
 import java.io.DataInput;
 import java.io.DataOutput;
 import java.io.IOException;
 
-import org.apache.hadoop.classification.InterfaceAudience;
-import org.apache.hadoop.classification.InterfaceStability;
-import org.apache.hadoop.util.bloom.Key;
-
-
 @InterfaceAudience.Public
 @InterfaceStability.Stable
 public class HadoopDynamicBloomFilter extends HadoopFilter {
-    /**
-     * Threshold for the maximum number of key to record in a dynamic Bloom filter row.
-     */
+    /** Threshold for the maximum number of key to record in a dynamic Bloom filter row. */
     private int nr;
 
-    /**
-     * The number of keys recorded in the current standard active Bloom filter.
-     */
+    /** The number of keys recorded in the current standard active Bloom filter. */
     private int currentNbRecord;
 
-    /**
-     * The matrix of Bloom filter.
-     */
+    /** The matrix of Bloom filter. */
     private HadoopBloomFilter[] matrix;
 
-    /**
-     * Zero-args constructor for the serialization.
-     */
-    public HadoopDynamicBloomFilter() { }
+    /** Zero-args constructor for the serialization. */
+    public HadoopDynamicBloomFilter() {}
 
     /**
      * Constructor.
-     * <p>
-     * Builds an empty Dynamic Bloom filter.
+     *
+     * <p>Builds an empty Dynamic Bloom filter.
+     *
      * @param vectorSize The number of bits in the vector.
      * @param nbHash The number of hash function to consider.
-     * @param hashType type of the hashing function (see
-     * {@link org.apache.hadoop.util.hash.Hash}).
-     * @param nr The threshold for the maximum number of keys to record in a
-     * dynamic Bloom filter row.
+     * @param hashType type of the hashing function (see {@link org.apache.hadoop.util.hash.Hash}).
+     * @param nr The threshold for the maximum number of keys to record in a dynamic Bloom filter
+     *     row.
      */
     public HadoopDynamicBloomFilter(int vectorSize, int nbHash, int hashType, int nr) {
         super(vectorSize, nbHash, hashType);
@@ -86,13 +76,12 @@ public class HadoopDynamicBloomFilter extends HadoopFilter {
             currentNbRecord = 0;
         }
 
-        if(bf.add(key)) {
+        if (bf.add(key)) {
             currentNbRecord++;
             return true;
         }
 
         return false;
-
     }
 
     @Override
@@ -104,7 +93,7 @@ public class HadoopDynamicBloomFilter extends HadoopFilter {
             throw new IllegalArgumentException("filters cannot be and-ed");
         }
 
-        HadoopDynamicBloomFilter dbf = (HadoopDynamicBloomFilter)filter;
+        HadoopDynamicBloomFilter dbf = (HadoopDynamicBloomFilter) filter;
 
         if (dbf.matrix.length != this.matrix.length || dbf.nr != this.nr) {
             throw new IllegalArgumentException("filters cannot be and-ed");
@@ -146,7 +135,7 @@ public class HadoopDynamicBloomFilter extends HadoopFilter {
             throw new IllegalArgumentException("filters cannot be or-ed");
         }
 
-        HadoopDynamicBloomFilter dbf = (HadoopDynamicBloomFilter)filter;
+        HadoopDynamicBloomFilter dbf = (HadoopDynamicBloomFilter) filter;
 
         if (dbf.matrix.length != this.matrix.length || dbf.nr != this.nr) {
             throw new IllegalArgumentException("filters cannot be or-ed");
@@ -164,13 +153,13 @@ public class HadoopDynamicBloomFilter extends HadoopFilter {
                 || filter.nbHash != this.nbHash) {
             throw new IllegalArgumentException("filters cannot be xor-ed");
         }
-        HadoopDynamicBloomFilter dbf = (HadoopDynamicBloomFilter)filter;
+        HadoopDynamicBloomFilter dbf = (HadoopDynamicBloomFilter) filter;
 
         if (dbf.matrix.length != this.matrix.length || dbf.nr != this.nr) {
             throw new IllegalArgumentException("filters cannot be xor-ed");
         }
 
-        for(int i = 0; i<matrix.length; i++) {
+        for (int i = 0; i < matrix.length; i++) {
             matrix[i].xor(dbf.matrix[i]);
         }
     }
@@ -212,9 +201,7 @@ public class HadoopDynamicBloomFilter extends HadoopFilter {
         }
     }
 
-    /**
-     * Adds a new row to <i>this</i> dynamic Bloom filter.
-     */
+    /** Adds a new row to <i>this</i> dynamic Bloom filter. */
     private void addRow() {
         HadoopBloomFilter[] tmp = new HadoopBloomFilter[matrix.length + 1];
 
@@ -226,15 +213,15 @@ public class HadoopDynamicBloomFilter extends HadoopFilter {
         vectorSize *= 10;
         nr *= 10;
 
-        tmp[tmp.length-1] = new HadoopBloomFilter(vectorSize, nbHash, hashType);
+        tmp[tmp.length - 1] = new HadoopBloomFilter(vectorSize, nbHash, hashType);
 
         matrix = tmp;
     }
 
     /**
      * Returns the active standard Bloom filter in <i>this</i> dynamic Bloom filter.
-     * @return BloomFilter The active standard Bloom filter.
-     * 			 <code>Null</code> otherwise.
+     *
+     * @return BloomFilter The active standard Bloom filter. <code>Null</code> otherwise.
      */
     private HadoopBloomFilter getActiveStandardBF() {
         if (currentNbRecord >= nr) {
@@ -244,4 +231,3 @@ public class HadoopDynamicBloomFilter extends HadoopFilter {
         return matrix[matrix.length - 1];
     }
 }
-

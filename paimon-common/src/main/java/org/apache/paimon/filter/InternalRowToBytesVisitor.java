@@ -47,7 +47,7 @@ import org.apache.paimon.types.VarCharType;
 import java.util.Arrays;
 import java.util.function.BiFunction;
 
-/** Temp. */
+/** Generate bytes from {@link InternalRow}. */
 public class InternalRowToBytesVisitor
         implements DataTypeVisitor<BiFunction<DataGetters, Integer, byte[]>> {
 

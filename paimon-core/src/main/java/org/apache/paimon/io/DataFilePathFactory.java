@@ -38,6 +38,8 @@ public class DataFilePathFactory {
 
     public static final String INDEX_PATH_PREFIX = "index-";
 
+    public static final String INDEX_PATH_SUBFFIX = "index";
+
     private final Path bucketDir;
     private final String uuid;
 
@@ -61,12 +63,16 @@ public class DataFilePathFactory {
     }
 
     public Path newIndexPath() {
-        return newPath(INDEX_PATH_PREFIX);
+        return newPath(INDEX_PATH_PREFIX, INDEX_PATH_SUBFFIX);
+    }
+
+    private Path newPath(String prefix, String subffix) {
+        String name = prefix + uuid + "-" + pathCount.getAndIncrement() + "." + subffix;
+        return new Path(bucketDir, name);
     }
 
     private Path newPath(String prefix) {
-        String name = prefix + uuid + "-" + pathCount.getAndIncrement() + "." + formatIdentifier;
-        return new Path(bucketDir, name);
+        return newPath(prefix, formatIdentifier);
     }
 
     public Path toPath(String fileName) {

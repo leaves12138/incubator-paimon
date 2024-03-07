@@ -18,10 +18,10 @@
 
 package org.apache.paimon.filter.bloomfilter;
 
-import org.apache.hadoop.util.hash.Hash;
 import org.apache.paimon.filter.FilterInterface;
 
 import org.apache.hadoop.util.bloom.Key;
+import org.apache.hadoop.util.hash.Hash;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -29,8 +29,10 @@ import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 
-/** Temp. */
+/** Bloom filter for secondary index. */
 public class BloomFilter implements FilterInterface {
+
+    public static final String BLOOM_FILTER = "bloom";
 
     private static final int HASH_NUMBER = 3;
 
@@ -41,6 +43,10 @@ public class BloomFilter implements FilterInterface {
 
     public BloomFilter() {}
 
+    public String name() {
+        return BLOOM_FILTER;
+    }
+
     @Override
     public void add(byte[] key) {
         filterKey.set(key, 1.0);
@@ -48,7 +54,7 @@ public class BloomFilter implements FilterInterface {
     }
 
     @Override
-    public boolean test(byte[] key) {
+    public boolean testEqual(byte[] key) {
         filterKey.set(key, 1.0);
         return filter.membershipTest(filterKey);
     }
@@ -78,19 +84,5 @@ public class BloomFilter implements FilterInterface {
             throw new RuntimeException(e);
         }
         return this;
-    }
-
-    /**
-     * @return m = -\frac{n \ln{p}}{(\ln{2})^2}, n for number, p for errorRate
-     */
-    static int getBitSize(int number, double errorRate) {
-        return (int) Math.ceil(number * (-Math.log(errorRate) / Math.log(2) * Math.log(2)));
-    }
-
-    /**
-     * @return k = \frac{m}{n} \ln{2}, m for bitsize, n for number
-     */
-    static int getNumHashes(int bitSize, int number) {
-        return (int) Math.ceil(Math.log(2) * bitSize / number);
     }
 }

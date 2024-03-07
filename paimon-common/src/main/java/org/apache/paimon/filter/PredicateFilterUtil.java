@@ -37,6 +37,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+/** Utils to check secondary index predicate. */
 public class PredicateFilterUtil {
 
     public static boolean checkPredicate(Path path, FileIO fileIO, @Nullable Predicate predicate)
@@ -74,7 +75,6 @@ public class PredicateFilterUtil {
     }
 
     public static boolean checkPredicate(byte[] serializedBytes, @Nullable Predicate predicate) {
-
         if (predicate == null) {
             return true;
         }
@@ -107,7 +107,7 @@ public class PredicateFilterUtil {
             ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
             DataOutputStream dataOutput = new DataOutputStream(byteArrayOutputStream);
             byte[] typeBytes = type.getBytes(StandardCharsets.UTF_8);
-            dataOutput.write(typeBytes.length);
+            dataOutput.writeInt(typeBytes.length);
             dataOutput.write(typeBytes);
 
             dataOutput.writeInt(indexMap.size());
@@ -123,8 +123,6 @@ public class PredicateFilterUtil {
             byte[] serializedBytes = byteArrayOutputStream.toByteArray();
             dataOutput.close();
             return serializedBytes;
-            //            return new String(Base64.getEncoder().encode(serializedBytes),
-            // StandardCharsets.UTF_8);
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
@@ -139,12 +137,9 @@ public class PredicateFilterUtil {
     public static Pair<String, Map<String, byte[]>> deserializeIndexString(DataInput dataInput) {
         Map<String, byte[]> indexMap = new HashMap<>();
         try {
-            //            byte[] serializedBytes =
-            //
-            // Base64.getDecoder().decode(serString.getBytes(StandardCharsets.UTF_8));
-
             int typeLength = dataInput.readInt();
             byte[] typeByte = new byte[typeLength];
+            dataInput.readFully(typeByte);
             String type = new String(typeByte, StandardCharsets.UTF_8);
 
             int size = dataInput.readInt();

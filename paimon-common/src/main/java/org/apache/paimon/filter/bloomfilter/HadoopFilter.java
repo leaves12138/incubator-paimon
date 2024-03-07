@@ -18,12 +18,6 @@
 
 package org.apache.paimon.filter.bloomfilter;
 
-import java.io.DataInput;
-import java.io.DataOutput;
-import java.io.IOException;
-import java.util.Collection;
-import java.util.List;
-
 import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.classification.InterfaceStability;
 import org.apache.hadoop.io.Writable;
@@ -31,16 +25,22 @@ import org.apache.hadoop.util.bloom.HashFunction;
 import org.apache.hadoop.util.bloom.Key;
 import org.apache.hadoop.util.hash.Hash;
 
+import java.io.DataInput;
+import java.io.DataOutput;
+import java.io.IOException;
+import java.util.Collection;
+import java.util.List;
+
 /**
  * Defines the general behavior of a filter.
- * <p>
- * A filter is a data structure which aims at offering a lossy summary of a set <code>A</code>.  The
- * key idea is to map entries of <code>A</code> (also called <i>keys</i>) into several positions
+ *
+ * <p>A filter is a data structure which aims at offering a lossy summary of a set <code>A</code>.
+ * The key idea is to map entries of <code>A</code> (also called <i>keys</i>) into several positions
  * in a vector through the use of several hash functions.
- * <p>
- * Typically, a filter will be implemented as a Bloom filter (or a Bloom filter extension).
- * <p>
- * It must be extended in order to define the real behavior.
+ *
+ * <p>Typically, a filter will be implemented as a Bloom filter (or a Bloom filter extension).
+ *
+ * <p>It must be extended in order to define the real behavior.
  *
  * @see Key The general behavior of a key
  * @see HashFunction A hash function
@@ -65,6 +65,7 @@ public abstract class HadoopFilter implements Writable {
 
     /**
      * Constructor.
+     *
      * @param vectorSize The vector size of <i>this</i> filter.
      * @param nbHash The number of hash functions to consider.
      * @param hashType type of the hashing function (see {@link Hash}).
@@ -78,89 +79,97 @@ public abstract class HadoopFilter implements Writable {
 
     /**
      * Adds a key to <i>this</i> filter.
+     *
      * @param key The key to add.
-     * @return {@code true} if the value did not previously exist in the filter (is a new record). Note, that a false positive may occur.
+     * @return {@code true} if the value did not previously exist in the filter (is a new record).
+     *     Note, that a false positive may occur.
      */
     public abstract boolean add(Key key);
 
     /**
      * Determines wether a specified key belongs to <i>this</i> filter.
+     *
      * @param key The key to test.
-     * @return boolean True if the specified key belongs to <i>this</i> filter.
-     * 		     False otherwise.
+     * @return boolean True if the specified key belongs to <i>this</i> filter. False otherwise.
      */
     public abstract boolean membershipTest(Key key);
 
     /**
      * Peforms a logical AND between <i>this</i> filter and a specified filter.
-     * <p>
-     * <b>Invariant</b>: The result is assigned to <i>this</i> filter.
+     *
+     * <p><b>Invariant</b>: The result is assigned to <i>this</i> filter.
+     *
      * @param filter The filter to AND with.
      */
     public abstract void and(HadoopFilter filter);
 
     /**
      * Peforms a logical OR between <i>this</i> filter and a specified filter.
-     * <p>
-     * <b>Invariant</b>: The result is assigned to <i>this</i> filter.
+     *
+     * <p><b>Invariant</b>: The result is assigned to <i>this</i> filter.
+     *
      * @param filter The filter to OR with.
      */
     public abstract void or(HadoopFilter filter);
 
     /**
      * Peforms a logical XOR between <i>this</i> filter and a specified filter.
-     * <p>
-     * <b>Invariant</b>: The result is assigned to <i>this</i> filter.
+     *
+     * <p><b>Invariant</b>: The result is assigned to <i>this</i> filter.
+     *
      * @param filter The filter to XOR with.
      */
     public abstract void xor(HadoopFilter filter);
 
     /**
      * Performs a logical NOT on <i>this</i> filter.
-     * <p>
-     * The result is assigned to <i>this</i> filter.
+     *
+     * <p>The result is assigned to <i>this</i> filter.
      */
     public abstract void not();
 
     /**
      * Adds a list of keys to <i>this</i> filter.
+     *
      * @param keys The list of keys.
      */
-    public void add(List<Key> keys){
-        if(keys == null) {
+    public void add(List<Key> keys) {
+        if (keys == null) {
             throw new IllegalArgumentException("ArrayList<Key> may not be null");
         }
 
-        for(Key key: keys) {
+        for (Key key : keys) {
             add(key);
         }
-    }//end add()
+    } // end add()
 
     /**
      * Adds a collection of keys to <i>this</i> filter.
+     *
      * @param keys The collection of keys.
      */
-    public void add(Collection<Key> keys){
-        if(keys == null) {
+    public void add(Collection<Key> keys) {
+        if (keys == null) {
             throw new IllegalArgumentException("Collection<Key> may not be null");
         }
-        for(Key key: keys) {
+        for (Key key : keys) {
             add(key);
         }
-    }//end add()
+    } // end add()
 
     /**
      * Adds an array of keys to <i>this</i> filter.
+     *
      * @param keys The array of keys.
      */
-    public void add(Key[] keys){
-        if(keys == null) {
+    public void add(Key[] keys) {
+        if (keys == null) {
             throw new IllegalArgumentException("Key[] may not be null");
         }
-        for(int i = 0; i < keys.length; i++) {
+        for (int i = 0; i < keys.length; i++) {
             add(keys[i]);
         }
-    }//end add()
+    } // end add()
 
     // Writable interface
 
@@ -187,5 +196,4 @@ public abstract class HadoopFilter implements Writable {
         this.vectorSize = in.readInt();
         this.hash = new HashFunction(this.vectorSize, this.nbHash, this.hashType);
     }
-}//end class
-
+} // end class

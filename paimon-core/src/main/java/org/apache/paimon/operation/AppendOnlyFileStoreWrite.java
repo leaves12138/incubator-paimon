@@ -70,6 +70,7 @@ public class AppendOnlyFileStoreWrite extends MemoryFileStoreWrite<InternalRow> 
     private final boolean spillable;
     private final FieldStatsCollector.Factory[] statsCollectors;
     private final List<String> indexColumn;
+    private final String indexType;
 
     private boolean forceBufferSpill = false;
     private boolean skipCompaction;
@@ -105,6 +106,7 @@ public class AppendOnlyFileStoreWrite extends MemoryFileStoreWrite<InternalRow> 
                 StatsCollectorFactories.createStatsFactories(options, rowType.getFieldNames());
 
         this.indexColumn = options.indexColumns();
+        this.indexType = options.indexType();
     }
 
     @Override
@@ -148,7 +150,7 @@ public class AppendOnlyFileStoreWrite extends MemoryFileStoreWrite<InternalRow> 
                 statsCollectors,
                 getWriterMetrics(partition, bucket),
                 indexColumn,
-                "bllom");
+                indexType);
     }
 
     public AppendOnlyCompactManager.CompactRewriter compactRewriter(

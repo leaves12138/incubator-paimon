@@ -18,7 +18,6 @@
 
 package org.apache.paimon.format;
 
-import java.util.Collections;
 import org.apache.paimon.CoreOptions;
 import org.apache.paimon.append.AppendOnlyCompactManager;
 import org.apache.paimon.append.AppendOnlyWriter;
@@ -43,6 +42,7 @@ import org.apache.paimon.utils.StatsCollectorFactories;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedList;
 

@@ -41,7 +41,9 @@ import java.util.Map;
 /** Index file writer. */
 public final class IndexWriter {
 
-    private static final int INDEX_SIZE_IN_META = 4096;
+    private static final int INDEX_SIZE_IN_META = 50;
+
+    private static final Pair<BinaryRow, String> EMPTY_RESULT = Pair.of(BinaryRow.EMPTY_ROW, null);
 
     private final FileIO fileIO;
 
@@ -84,6 +86,9 @@ public final class IndexWriter {
     }
 
     public void close() throws IOException {
+        if (indexMaintainers.isEmpty()) {
+            return;
+        }
         byte[] serializedBytes = getSerializedBytes();
 
         if (serializedBytes.length > INDEX_SIZE_IN_META) {
@@ -103,7 +108,7 @@ public final class IndexWriter {
     }
 
     public Pair<BinaryRow, String> result() {
-        return Pair.of(resultRow, resultFileName);
+        return indexMaintainers.isEmpty() ? EMPTY_RESULT : Pair.of(resultRow, resultFileName);
     }
 
     public byte[] getSerializedBytes() {

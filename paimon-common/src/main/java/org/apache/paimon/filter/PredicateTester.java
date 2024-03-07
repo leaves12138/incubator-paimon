@@ -88,63 +88,66 @@ public class PredicateTester implements PredicateVisitor<Boolean> {
 
         @Override
         public Boolean visitIsNotNull(FieldRef fieldRef) {
-            return true;
+            return filterInterface.testNotEqual(NULL_BYTES);
         }
 
         @Override
         public Boolean visitIsNull(FieldRef fieldRef) {
-            return filterInterface.test(NULL_BYTES);
+            return filterInterface.testEqual(NULL_BYTES);
         }
 
         @Override
         public Boolean visitStartsWith(FieldRef fieldRef, Object literal) {
-            return true;
+            return filterInterface.testStartsWith(getBytes(fieldRef, literal));
         }
 
         @Override
         public Boolean visitLessThan(FieldRef fieldRef, Object literal) {
-            return true;
+            return filterInterface.testLessThan(getBytes(fieldRef, literal));
         }
 
         @Override
         public Boolean visitGreaterOrEqual(FieldRef fieldRef, Object literal) {
-            return true;
+            return filterInterface.testGreaterOrEqual(getBytes(fieldRef, literal));
         }
 
         @Override
         public Boolean visitNotEqual(FieldRef fieldRef, Object literal) {
-            return true;
+            return filterInterface.testNotEqual(getBytes(fieldRef, literal));
         }
 
         @Override
         public Boolean visitLessOrEqual(FieldRef fieldRef, Object literal) {
-            return true;
+            return filterInterface.testLessOrEqual(getBytes(fieldRef, literal));
         }
 
         @Override
         public Boolean visitEqual(FieldRef fieldRef, Object literal) {
-            return filterInterface.test(
+            return filterInterface.testEqual(
                     fieldRef.type().accept(objectToBytesVisitor).apply(literal));
         }
 
         @Override
         public Boolean visitGreaterThan(FieldRef fieldRef, Object literal) {
-            return true;
+            return filterInterface.testGreaterThan(getBytes(fieldRef, literal));
         }
 
         @Override
         public Boolean visitIn(FieldRef fieldRef, List<Object> literals) {
-            for (Object o : literals) {
-                if (filterInterface.test(fieldRef.type().accept(objectToBytesVisitor).apply(o))) {
-                    return true;
-                }
+            byte[][] keys = new byte[literals.size()][];
+            for (int i = 0; i < literals.size(); i++) {
+                keys[i] = getBytes(fieldRef, literals.get(i));
             }
-            return false;
+            return filterInterface.testIn(keys);
         }
 
         @Override
         public Boolean visitNotIn(FieldRef fieldRef, List<Object> literals) {
-            return true;
+            byte[][] keys = new byte[literals.size()][];
+            for (int i = 0; i < literals.size(); i++) {
+                keys[i] = getBytes(fieldRef, literals.get(i));
+            }
+            return filterInterface.testNotIn(keys);
         }
 
         @Override
@@ -155,6 +158,10 @@ public class PredicateTester implements PredicateVisitor<Boolean> {
         @Override
         public Boolean visitOr(List<Boolean> children) {
             return true;
+        }
+
+        private byte[] getBytes(FieldRef fieldRef, Object o) {
+            return fieldRef.type().accept(objectToBytesVisitor).apply(o);
         }
     }
 }

@@ -23,7 +23,7 @@ import org.apache.paimon.data.InternalRow;
 
 import java.util.function.BiFunction;
 
-/** Temp. */
+/** One index maintainer for one column. */
 public class IndexMaintainer {
 
     private final String columnName;

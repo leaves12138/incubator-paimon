@@ -72,7 +72,7 @@ public abstract class ManifestFileMetaTestBase {
                         fileName,
                         0, // not used
                         0, // not used
-                        binaryRow, //not used
+                        binaryRow, // not used
                         binaryRow, // not useds
                         binaryRow, // not used
                         StatsTestUtils.newEmptyTableStats(), // not used

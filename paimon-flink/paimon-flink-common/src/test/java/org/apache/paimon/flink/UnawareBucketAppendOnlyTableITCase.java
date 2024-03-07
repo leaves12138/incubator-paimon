@@ -317,8 +317,10 @@ public class UnawareBucketAppendOnlyTableITCase extends CatalogITCaseBase {
 
     @Test
     public void testSkipDedup2() {
-        batchSql("INSERT INTO index_table VALUES (1, 'a', 'AAA'), (1, 'a', 'AAA'), (2, 'b', 'BBB'), (3, 'b', 'BBB')");
+        batchSql(
+                "INSERT INTO index_table VALUES (1, 'a', 'AAA'), (1, 'a', 'AAA'), (2, 'c', 'BBB'), (3, 'c', 'BBB')");
 
+        batchSql("SELECT * FROM index_table WHERE indexc = 'c'");
 
         return;
     }

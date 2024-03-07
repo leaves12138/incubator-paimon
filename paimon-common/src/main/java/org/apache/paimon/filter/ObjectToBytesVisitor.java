@@ -50,7 +50,7 @@ import org.apache.paimon.types.VarCharType;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 
-/** Temp. */
+/** Convert different type object to bytes. */
 public class ObjectToBytesVisitor implements DataTypeVisitor<Function<Object, byte[]>> {
 
     @Override

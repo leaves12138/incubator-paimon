@@ -18,29 +18,29 @@
 
 package org.apache.paimon.filter.bloomfilter;
 
-import java.io.DataInput;
-import java.io.DataOutput;
-import java.io.IOException;
-
-import java.util.BitSet;
-
 import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.classification.InterfaceStability;
 import org.apache.hadoop.util.bloom.Key;
 
+import java.io.DataInput;
+import java.io.DataOutput;
+import java.io.IOException;
+import java.util.BitSet;
+
 @InterfaceAudience.Public
 @InterfaceStability.Stable
 public class HadoopBloomFilter extends HadoopFilter {
-    private static final byte[] bitvalues = new byte[] {
-            (byte)0x01,
-            (byte)0x02,
-            (byte)0x04,
-            (byte)0x08,
-            (byte)0x10,
-            (byte)0x20,
-            (byte)0x40,
-            (byte)0x80
-    };
+    private static final byte[] bitvalues =
+            new byte[] {
+                (byte) 0x01,
+                (byte) 0x02,
+                (byte) 0x04,
+                (byte) 0x08,
+                (byte) 0x10,
+                (byte) 0x20,
+                (byte) 0x40,
+                (byte) 0x80
+            };
 
     /** The bit vector. */
     BitSet bits;
@@ -52,10 +52,10 @@ public class HadoopBloomFilter extends HadoopFilter {
 
     /**
      * Constructor
+     *
      * @param vectorSize The vector size of <i>this</i> filter.
      * @param nbHash The number of hash function to consider.
-     * @param hashType type of the hashing function (see
-     * {@link org.apache.hadoop.util.hash.Hash}).
+     * @param hashType type of the hashing function (see {@link org.apache.hadoop.util.hash.Hash}).
      */
     public HadoopBloomFilter(int vectorSize, int nbHash, int hashType) {
         super(vectorSize, nbHash, hashType);
@@ -65,7 +65,7 @@ public class HadoopBloomFilter extends HadoopFilter {
 
     @Override
     public boolean add(Key key) {
-        if(key == null) {
+        if (key == null) {
             throw new NullPointerException("key cannot be null");
         }
 
@@ -73,7 +73,7 @@ public class HadoopBloomFilter extends HadoopFilter {
         hash.clear();
 
         boolean newRecord = false;
-        for(int i = 0; i < nbHash; i++) {
+        for (int i = 0; i < nbHash; i++) {
             if (!bits.get(h[i])) {
                 newRecord = true;
                 bits.set(h[i]);
@@ -84,7 +84,7 @@ public class HadoopBloomFilter extends HadoopFilter {
 
     @Override
     public void and(HadoopFilter filter) {
-        if(filter == null
+        if (filter == null
                 || !(filter instanceof HadoopBloomFilter)
                 || filter.vectorSize != this.vectorSize
                 || filter.nbHash != this.nbHash) {
@@ -96,14 +96,14 @@ public class HadoopBloomFilter extends HadoopFilter {
 
     @Override
     public boolean membershipTest(Key key) {
-        if(key == null) {
+        if (key == null) {
             throw new NullPointerException("key cannot be null");
         }
 
         int[] h = hash.hash(key);
         hash.clear();
-        for(int i = 0; i < nbHash; i++) {
-            if(!bits.get(h[i])) {
+        for (int i = 0; i < nbHash; i++) {
+            if (!bits.get(h[i])) {
                 return false;
             }
         }
@@ -117,7 +117,7 @@ public class HadoopBloomFilter extends HadoopFilter {
 
     @Override
     public void or(HadoopFilter filter) {
-        if(filter == null
+        if (filter == null
                 || !(filter instanceof HadoopBloomFilter)
                 || filter.vectorSize != this.vectorSize
                 || filter.nbHash != this.nbHash) {
@@ -128,7 +128,7 @@ public class HadoopBloomFilter extends HadoopFilter {
 
     @Override
     public void xor(HadoopFilter filter) {
-        if(filter == null
+        if (filter == null
                 || !(filter instanceof HadoopBloomFilter)
                 || filter.vectorSize != this.vectorSize
                 || filter.nbHash != this.nbHash) {
@@ -142,9 +142,7 @@ public class HadoopBloomFilter extends HadoopFilter {
         return bits.toString();
     }
 
-    /**
-     * @return size of the the bloomfilter
-     */
+    /** @return size of the the bloomfilter */
     public int getVectorSize() {
         return this.vectorSize;
     }
@@ -155,7 +153,7 @@ public class HadoopBloomFilter extends HadoopFilter {
     public void write(DataOutput out) throws IOException {
         super.write(out);
         byte[] bytes = new byte[getNBytes()];
-        for(int i = 0, byteIndex = 0, bitIndex = 0; i < vectorSize; i++, bitIndex++) {
+        for (int i = 0, byteIndex = 0, bitIndex = 0; i < vectorSize; i++, bitIndex++) {
             if (bitIndex == 8) {
                 bitIndex = 0;
                 byteIndex++;
@@ -176,7 +174,7 @@ public class HadoopBloomFilter extends HadoopFilter {
         bits = new BitSet(this.vectorSize);
         byte[] bytes = new byte[getNBytes()];
         in.readFully(bytes);
-        for(int i = 0, byteIndex = 0, bitIndex = 0; i < vectorSize; i++, bitIndex++) {
+        for (int i = 0, byteIndex = 0, bitIndex = 0; i < vectorSize; i++, bitIndex++) {
             if (bitIndex == 8) {
                 bitIndex = 0;
                 byteIndex++;
@@ -189,6 +187,6 @@ public class HadoopBloomFilter extends HadoopFilter {
 
     /* @return number of bytes needed to hold bit vector */
     private int getNBytes() {
-        return (int)(((long)vectorSize + 7) / 8);
+        return (int) (((long) vectorSize + 7) / 8);
     }
-}//end class
+} // end class
