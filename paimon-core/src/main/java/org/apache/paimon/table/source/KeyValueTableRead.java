@@ -121,6 +121,7 @@ public final class KeyValueTableRead extends AbstractDataTableRead<KeyValue> {
             return batchRawRead.get().createReader(dataSplit);
         }
 
+        @SuppressWarnings("resource")
         RecordReader<KeyValue> reader = mergeRead.get().createReader(dataSplit);
         return new RecordReader<InternalRow>() {
 

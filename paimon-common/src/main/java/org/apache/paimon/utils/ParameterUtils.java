@@ -35,10 +35,142 @@ public class ParameterUtils {
     }
 
     public static Map<String, String> parseCommaSeparatedKeyValues(String keyValues) {
+
+        // use state machine to parse table options
+        final int state1 = 1;
+        final int state2 = 2;
+        final int state3 = 3;
+        final int state4 = 4;
+        final int state5 = 5;
+        final int state6 = 6;
+        final int state7 = 7;
+        final int state8 = 8;
+
         Map<String, String> kvs = new HashMap<>();
+        StringBuilder key = new StringBuilder();
+        StringBuilder value = new StringBuilder();
         if (!StringUtils.isBlank(keyValues)) {
-            for (String kvString : keyValues.split(",")) {
-                parseKeyValueString(kvs, kvString);
+            // init state
+            int currentSearchState = state1;
+            char[] chars = keyValues.toCharArray();
+            int position = 0;
+            Character next = chars[position];
+            while (true) {
+                if (next == null && currentSearchState != state7 && currentSearchState != state8) {
+                    throw new IllegalArgumentException(
+                            "Can't resolve table option expression: " + keyValues);
+                }
+                switch (currentSearchState) {
+                    case state1:
+                        {
+                            if (next == '\'') {
+                                currentSearchState = state2;
+                            } else if (next == ' ') {
+
+                            } else {
+                                key.append(next);
+                                currentSearchState = state4;
+                            }
+                            break;
+                        }
+
+                    case state2:
+                        {
+                            if (next == '\'') {
+                                currentSearchState = state3;
+                            } else {
+                                key.append(next);
+                            }
+                            break;
+                        }
+
+                    case state3:
+                        {
+                            if (next == '=') {
+                                currentSearchState = state5;
+                            } else if (next == ' ') {
+                                // no nothing
+                            } else {
+                                throw new IllegalArgumentException(
+                                        "Error happens in position " + position + ", '=' expected");
+                            }
+                            break;
+                        }
+
+                    case state4:
+                        {
+                            if (next == '=') {
+                                currentSearchState = state5;
+                            } else if (next == ' ') {
+
+                            } else {
+                                key.append(next);
+                            }
+                            break;
+                        }
+
+                    case state5:
+                        {
+                            if (next == ' ') {
+
+                            } else if (next == '\'') {
+                                currentSearchState = state6;
+                            } else {
+                                value.append(next);
+                                currentSearchState = state8;
+                            }
+                            break;
+                        }
+
+                    case state6:
+                        {
+                            if (next == '\'') {
+                                currentSearchState = state7;
+                            } else {
+                                value.append(next);
+                            }
+                            break;
+                        }
+
+                    case state7:
+                        {
+                            kvs.put(key.toString(), value.toString());
+                            if (next == null) {
+                                return kvs;
+                            } else if (next == ',') {
+                                key = new StringBuilder();
+                                value = new StringBuilder();
+                                currentSearchState = state1;
+                            } else if (next == ' ') {
+                                // no nothing
+                            } else {
+                                throw new IllegalArgumentException(
+                                        "Error happens in position " + position + ", '=' expected");
+                            }
+                            break;
+                        }
+
+                    case state8:
+                        {
+                            if (next == null) {
+                                kvs.put(key.toString(), value.toString());
+                                return kvs;
+                            } else if (next == ',') {
+                                kvs.put(key.toString(), value.toString());
+                                key = new StringBuilder();
+                                value = new StringBuilder();
+                                currentSearchState = state1;
+                            } else if (next == ' ') {
+
+                            } else {
+                                value.append(next);
+                            }
+                            break;
+                        }
+                }
+
+                position++;
+                next = position < chars.length ? chars[position] : null;
             }
         }
         return kvs;
