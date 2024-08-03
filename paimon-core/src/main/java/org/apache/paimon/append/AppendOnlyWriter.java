@@ -48,6 +48,8 @@ import org.apache.paimon.utils.LongCounter;
 import org.apache.paimon.utils.Preconditions;
 import org.apache.paimon.utils.RecordWriter;
 
+import org.apache.arrow.vector.VectorSchemaRoot;
+
 import javax.annotation.Nullable;
 
 import java.io.IOException;
@@ -170,6 +172,14 @@ public class AppendOnlyWriter implements RecordWriter<InternalRow>, MemoryOwner 
                 throw new RuntimeException("Mem table is too small to hold a single element.");
             }
         }
+    }
+
+    @Override
+    public void writeDirect(VectorSchemaRoot vectorSchemaRoot) throws Exception {
+        if (sinkWriter instanceof BufferedSinkWriter) {
+            throw new RuntimeException("Not suppor BufferedSinkWriter.");
+        }
+        ((DirectSinkWriter) sinkWriter).write(vectorSchemaRoot);
     }
 
     @Override
@@ -388,6 +398,14 @@ public class AppendOnlyWriter implements RecordWriter<InternalRow>, MemoryOwner 
                 writer = createRollingRowWriter();
             }
             writer.write(data);
+            return true;
+        }
+
+        public boolean write(VectorSchemaRoot vectorSchemaRoot) throws IOException {
+            if (writer == null) {
+                writer = createRollingRowWriter();
+            }
+            writer.writeDirect(vectorSchemaRoot);
             return true;
         }
 

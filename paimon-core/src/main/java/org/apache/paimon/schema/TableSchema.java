@@ -31,6 +31,7 @@ import javax.annotation.Nullable;
 
 import java.io.IOException;
 import java.io.Serializable;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
@@ -245,6 +246,12 @@ public class TableSchema implements Serializable {
 
     public RowType logicalPartitionType() {
         return projectedLogicalRowType(partitionKeys);
+    }
+
+    public RowType logicalTrimmedPartitionType() {
+        List<String> tripped = new ArrayList<>(fieldNames());
+        tripped.removeAll(partitionKeys);
+        return projectedLogicalRowType(tripped);
     }
 
     public RowType logicalBucketKeyType() {

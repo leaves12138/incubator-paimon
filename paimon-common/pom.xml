@@ -70,6 +70,13 @@ under the License.
             <version>${zstd-jni.version}</version>
         </dependency>
 
+
+        <dependency>
+            <groupId>org.apache.arrow</groupId>
+            <artifactId>arrow-vector</artifactId>
+            <version>14.0.0</version>
+        </dependency>
+
         <!-- Java compiler -->
         <dependency>
             <groupId>org.codehaus.janino</groupId>
