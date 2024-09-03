@@ -76,7 +76,7 @@ public abstract class StatsCollectingSingleFileWriter<T, R> extends SingleFileWr
     @Override
     public void writeBundle(BundleRecords bundle) throws IOException {
         Preconditions.checkState(
-                simpleStatsExtractor != null,
+                simpleStatsExtractor == null,
                 "Can't write bundle without simpleStatsExtractor, we may lose all the statistical information");
 
         super.writeBundle(bundle);
