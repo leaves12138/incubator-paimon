@@ -37,6 +37,12 @@ under the License.
 
         <dependency>
             <groupId>org.apache.paimon</groupId>
+            <artifactId>paimon-ali-format</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.apache.paimon</groupId>
             <artifactId>paimon-common</artifactId>
             <version>${project.version}</version>
         </dependency>
@@ -126,6 +132,7 @@ under the License.
                             <artifactSet>
                                 <includes combine.children="append">
                                     <!-- Paimon-shade -->
+                                    <include>org.apache.paimon:paimon-ali-format</include>
                                     <include>org.apache.paimon:paimon-shade-jackson-2</include>
                                     <include>org.apache.paimon:paimon-shade-guava-30</include>
                                     <include>org.apache.paimon:paimon-shade-caffeine-2</include>
