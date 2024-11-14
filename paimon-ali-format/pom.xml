@@ -139,6 +139,10 @@ under the License.
                                     <pattern>com.google.flatbuffers</pattern>
                                     <shadedPattern>org.apache.paimon.format.aliorc.shade.com.google.flatbuffers</shadedPattern>
                                 </relocation>
+                                <relocation>
+                                    <pattern>org.apache.orc</pattern>
+                                    <shadedPattern>org.apache.paimon.shade.org.apache.orc</shadedPattern>
+                                </relocation>
                             </relocations>
                         </configuration>
                     </execution>
