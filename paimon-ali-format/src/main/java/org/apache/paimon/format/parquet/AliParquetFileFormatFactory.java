@@ -20,7 +20,7 @@ package org.apache.paimon.format.parquet;
 
 import org.apache.paimon.format.FileFormatFactory;
 
-/** Factory to create {@link org.apache.paimon.format.parquet.ParquetFileFormat}. */
+/** Factory to create {@link ParquetFileFormat}. */
 public class AliParquetFileFormatFactory implements FileFormatFactory {
 
     public static final String IDENTIFIER = "parquet";

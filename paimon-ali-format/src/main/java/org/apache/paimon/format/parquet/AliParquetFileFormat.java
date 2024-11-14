@@ -24,11 +24,16 @@ import org.apache.paimon.format.FileFormatFactory;
 import org.apache.paimon.format.FormatReaderFactory;
 import org.apache.paimon.format.FormatWriterFactory;
 import org.apache.paimon.predicate.Predicate;
+import org.apache.paimon.types.DataType;
+import org.apache.paimon.types.DataTypeChecks;
 import org.apache.paimon.types.RowType;
 
 import javax.annotation.Nullable;
 
 import java.util.List;
+
+import static org.apache.paimon.types.DataTypeRoot.TIMESTAMP_WITHOUT_TIME_ZONE;
+import static org.apache.paimon.types.DataTypeRoot.TIMESTAMP_WITH_LOCAL_TIME_ZONE;
 
 /** Parquet {@link FileFormat}. */
 public class AliParquetFileFormat extends ParquetFileFormat {
@@ -58,7 +63,7 @@ public class AliParquetFileFormat extends ParquetFileFormat {
 
     @Override
     public FormatWriterFactory createWriterFactory(RowType type) {
-        if (formatContext.options().getBoolean(USE_NATIVE, false)) {
+        if (supportNativeWrite(type) && formatContext.options().getBoolean(USE_NATIVE, true)) {
             return new AliParquetWriterFactory(
                     type,
                     () -> new ArrowFormatCWriter(type, formatContext.writeBatchSize(), true),
@@ -67,5 +72,19 @@ public class AliParquetFileFormat extends ParquetFileFormat {
         } else {
             return super.createWriterFactory(type);
         }
+    }
+
+    private boolean supportNativeWrite(RowType writeRowType) {
+        for (DataType fieldType : writeRowType.getFieldTypes()) {
+            switch (fieldType.getTypeRoot()) {
+                case TIMESTAMP_WITHOUT_TIME_ZONE:
+                case TIMESTAMP_WITH_LOCAL_TIME_ZONE:
+                    int precision = DataTypeChecks.getPrecision(fieldType);
+                    if (precision > 6) {
+                        return false;
+                    }
+            }
+        }
+        return true;
     }
 }
