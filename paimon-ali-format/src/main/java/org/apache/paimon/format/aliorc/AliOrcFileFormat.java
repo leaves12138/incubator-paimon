@@ -18,7 +18,6 @@
 
 package org.apache.paimon.format.aliorc;
 
-import org.apache.orc.TypeDescription;
 import org.apache.paimon.arrow.vector.ArrowFormatCWriter;
 import org.apache.paimon.format.FileFormat;
 import org.apache.paimon.format.FileFormatFactory;
@@ -32,6 +31,8 @@ import org.apache.paimon.predicate.Predicate;
 import org.apache.paimon.statistics.SimpleColStatsCollector;
 import org.apache.paimon.types.DataType;
 import org.apache.paimon.types.RowType;
+
+import org.apache.orc.TypeDescription;
 
 import javax.annotation.Nullable;
 
