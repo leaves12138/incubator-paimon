@@ -32,7 +32,7 @@ import org.apache.paimon.statistics.SimpleColStatsCollector;
 import org.apache.paimon.types.DataType;
 import org.apache.paimon.types.RowType;
 
-import org.apache.orc.TypeDescription;
+import org.apache.paimon.shade.org.apache.orc.TypeDescription;
 
 import javax.annotation.Nullable;
 
