@@ -205,9 +205,14 @@ public class ParquetVectorUpdaterFactory {
             return c -> {
                 if (c.getPrimitiveType().getPrimitiveTypeName()
                         == PrimitiveType.PrimitiveTypeName.INT64) {
-                    return new LongUpdater();
+                    return new LongTimestampUpdater(localZonedTimestampType.getPrecision());
+                } else if (c.getPrimitiveType().getPrimitiveTypeName()
+                        == PrimitiveType.PrimitiveTypeName.INT96) {
+                    return new TimestampUpdater(localZonedTimestampType.getPrecision());
+                } else {
+                    throw new UnsupportedOperationException(
+                            "Only support timestamp with int64 and int96 in parquet file yet");
                 }
-                return new TimestampUpdater(localZonedTimestampType.getPrecision());
             };
         }
 
