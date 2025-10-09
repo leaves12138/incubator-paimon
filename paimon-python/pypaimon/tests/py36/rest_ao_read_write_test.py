@@ -801,7 +801,9 @@ class RESTReadWritePy36Test(RESTBaseTest):
             embedded_index=None,
             file_source=None,
             value_stats_cols=value_stats_cols,  # This is the key field we're testing
-            external_path=None
+            external_path=None,
+            first_row_id=None,
+            write_cols=None
         )
 
         # Create ManifestEntry

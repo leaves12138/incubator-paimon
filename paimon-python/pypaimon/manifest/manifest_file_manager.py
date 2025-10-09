@@ -89,6 +89,9 @@ class ManifestFileManager:
                 embedded_index=file_dict['_EMBEDDED_FILE_INDEX'],
                 file_source=file_dict['_FILE_SOURCE'],
                 value_stats_cols=file_dict.get('_VALUE_STATS_COLS'),
+                external_path=file_dict.get('_EXTERNAL_PATH'),
+                first_row_id=file_dict['_FIRST_ROW_ID'],
+                write_cols=file_dict['_WRITE_COLS'],
             )
             entry = ManifestEntry(
                 kind=record['_KIND'],
@@ -137,6 +140,9 @@ class ManifestFileManager:
                     "_EMBEDDED_FILE_INDEX": entry.file.embedded_index,
                     "_FILE_SOURCE": entry.file.file_source,
                     "_VALUE_STATS_COLS": entry.file.value_stats_cols,
+                    "_EXTERNAL_PATH": entry.file.external_path,
+                    "_FIRST_ROW_ID": entry.file.first_row_id,
+                    "_WRITE_COLS": entry.file.write_cols,
                 }
             }
             avro_records.append(avro_record)

@@ -76,7 +76,10 @@ class TestFileStoreCommit(unittest.TestCase):
             schema_id=0,
             level=0,
             extra_files=None,
-            creation_time=creation_time
+            creation_time=creation_time,
+            external_path=None,
+            first_row_id=None,
+            write_cols=None
         )
 
         commit_message = CommitMessage(
@@ -182,7 +185,10 @@ class TestFileStoreCommit(unittest.TestCase):
             schema_id=0,
             level=0,
             extra_files=None,
-            creation_time=creation_time
+            creation_time=creation_time,
+            external_path=None,
+            first_row_id=None,
+            write_cols=None
         )
 
         # File for partition 2
@@ -199,7 +205,10 @@ class TestFileStoreCommit(unittest.TestCase):
             schema_id=0,
             level=0,
             extra_files=None,
-            creation_time=creation_time
+            creation_time=creation_time,
+            external_path=None,
+            first_row_id=None,
+            write_cols=None
         )
 
         commit_message_1 = CommitMessage(
@@ -261,7 +270,10 @@ class TestFileStoreCommit(unittest.TestCase):
             schema_id=0,
             level=0,
             extra_files=None,
-            creation_time=creation_time
+            creation_time=creation_time,
+            external_path=None,
+            first_row_id=None,
+            write_cols=None
         )
 
         commit_message = CommitMessage(

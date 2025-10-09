@@ -165,7 +165,11 @@ class DataWriter(ABC):
             extra_files=[],
             creation_time=datetime.now(),
             delete_row_count=0,
+            file_source="APPEND",
             value_stats_cols=None,  # None means all columns have statistics
+            external_path=None,
+            first_row_id=None,
+            write_cols=None,
             file_path=str(file_path),
         ))
 
