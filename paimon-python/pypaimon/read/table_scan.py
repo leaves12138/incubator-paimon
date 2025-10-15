@@ -411,6 +411,38 @@ class TableScan:
         """Check if a file is a blob file based on its extension."""
         return file_name.endswith('.blob')
 
+    @staticmethod
+    def _filter_blob(files: List[DataFileMeta]) -> List[DataFileMeta]:
+        """
+        Filter blob files to only include those that fall within the row ID range of non-blob files.
+        This is equivalent to the filterBlob method in Java DataEvolutionSplitGenerator.
+
+        Args:
+            files: List of DataFileMeta objects
+
+        Returns:
+            Filtered list of DataFileMeta objects
+        """
+        result = []
+        row_id_start = -1
+        row_id_end = -1
+
+        for file in files:
+            if not TableScan._is_blob_file(file.file_name):
+                # Non-blob file: update the row ID range
+                if file.first_row_id is not None:
+                    row_id_start = file.first_row_id
+                    row_id_end = file.first_row_id + file.row_count
+                result.append(file)
+            else:
+                # Blob file: only include if it falls within the current row ID range
+                if file.first_row_id is not None and row_id_start != -1:
+                    if row_id_start <= file.first_row_id < row_id_end:
+                        result.append(file)
+                # If no valid range is set yet, don't include the blob file
+
+        return result
+
     def _split_by_row_id(self, files: List[DataFileMeta]) -> List[List[DataFileMeta]]:
         """
         Split files by firstRowId for data evolution.
@@ -431,6 +463,9 @@ class TableScan:
             return (first_row_id, is_blob, -max_seq)
 
         sorted_files = sorted(files, key=sort_key)
+
+        # Filter blob files to only include those within the row ID range of non-blob files
+        sorted_files = self._filter_blob(sorted_files)
 
         # Split files by firstRowId
         last_row_id = -1
