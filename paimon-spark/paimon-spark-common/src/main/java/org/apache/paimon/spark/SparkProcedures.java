@@ -25,6 +25,7 @@ import org.apache.paimon.spark.procedure.CompactManifestProcedure;
 import org.apache.paimon.spark.procedure.CompactProcedure;
 import org.apache.paimon.spark.procedure.CreateBranchProcedure;
 import org.apache.paimon.spark.procedure.CreateFunctionProcedure;
+import org.apache.paimon.spark.procedure.CreateGlobalIndexProcedure;
 import org.apache.paimon.spark.procedure.CreateTagFromTimestampProcedure;
 import org.apache.paimon.spark.procedure.CreateTagProcedure;
 import org.apache.paimon.spark.procedure.DeleteBranchProcedure;
@@ -90,6 +91,7 @@ public class SparkProcedures {
         procedureBuilders.put("delete_tag", DeleteTagProcedure::builder);
         procedureBuilders.put("expire_tags", ExpireTagsProcedure::builder);
         procedureBuilders.put("create_branch", CreateBranchProcedure::builder);
+        procedureBuilders.put("create_global_index", CreateGlobalIndexProcedure::builder);
         procedureBuilders.put("delete_branch", DeleteBranchProcedure::builder);
         procedureBuilders.put("compact", CompactProcedure::builder);
         procedureBuilders.put("migrate_database", MigrateDatabaseProcedure::builder);
