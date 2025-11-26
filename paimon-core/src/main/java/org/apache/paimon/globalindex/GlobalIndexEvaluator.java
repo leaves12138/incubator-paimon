@@ -142,21 +142,18 @@ public class GlobalIndexEvaluator implements Closeable {
                     new FieldRef(predicate.index(), predicate.fieldName(), predicate.type());
             for (GlobalIndexReader fileIndexReader :
                     columnIndexReaders.get(fieldColumnToId.get(predicate.fieldName()).id())) {
-                Optional<GlobalIndexResult> childResult =
+                GlobalIndexResult childResult =
                         predicate.function().visit(fileIndexReader, fieldRef, predicate.literals());
 
                 // AND Operation
-                if (childResult.isPresent()) {
-                    if (compoundResult.isPresent()) {
-                        GlobalIndexResult r1 = compoundResult.get();
-                        GlobalIndexResult r2 = childResult.get();
-                        compoundResult = Optional.of(r1.and(r2));
-                    } else {
-                        compoundResult = childResult;
-                    }
+                if (compoundResult.isPresent()) {
+                    GlobalIndexResult r1 = compoundResult.get();
+                    compoundResult = Optional.of(r1.and(childResult));
+                } else {
+                    compoundResult = Optional.of(childResult);
                 }
 
-                if (compoundResult.isPresent() && !compoundResult.get().iterator().hasNext()) {
+                if (!compoundResult.get().iterator().hasNext()) {
                     return compoundResult;
                 }
             }
