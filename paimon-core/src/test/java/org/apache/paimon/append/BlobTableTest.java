@@ -19,6 +19,7 @@
 package org.apache.paimon.append;
 
 import org.apache.paimon.CoreOptions;
+import org.apache.paimon.Snapshot;
 import org.apache.paimon.data.BinaryString;
 import org.apache.paimon.data.Blob;
 import org.apache.paimon.data.BlobData;
@@ -26,13 +27,23 @@ import org.apache.paimon.data.GenericRow;
 import org.apache.paimon.data.InternalRow;
 import org.apache.paimon.fs.SeekableInputStream;
 import org.apache.paimon.io.DataFileMeta;
+import org.apache.paimon.manifest.FileEntry;
+import org.apache.paimon.manifest.ManifestCommittable;
 import org.apache.paimon.manifest.ManifestEntry;
+import org.apache.paimon.manifest.ManifestFileMeta;
 import org.apache.paimon.operation.DataEvolutionSplitRead;
+import org.apache.paimon.operation.FileStoreCommitImpl;
+import org.apache.paimon.partition.Partition;
 import org.apache.paimon.reader.RecordReader;
 import org.apache.paimon.schema.Schema;
+import org.apache.paimon.table.FileStoreTable;
 import org.apache.paimon.table.Table;
 import org.apache.paimon.table.TableTestBase;
+import org.apache.paimon.table.sink.CommitMessage;
+import org.apache.paimon.table.sink.TableWriteImpl;
 import org.apache.paimon.table.source.ReadBuilder;
+import org.apache.paimon.table.source.ScanMode;
+import org.apache.paimon.table.system.PartitionsTable;
 import org.apache.paimon.types.DataTypes;
 import org.apache.paimon.utils.Range;
 
@@ -41,6 +52,7 @@ import org.junit.jupiter.api.Test;
 import javax.annotation.Nonnull;
 
 import java.io.ByteArrayInputStream;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
@@ -196,6 +208,51 @@ public class BlobTableTest extends TableTestBase {
         assertThat(integer.get()).isEqualTo(1025);
     }
 
+    @Test
+    public void testOverwriteFailed() throws Exception {
+
+        createTableDefault();
+        FileStoreTable table = getTableDefault();
+
+        commitDefault(writeDataDefault(1, 1));
+
+        TableWriteImpl tableWrite = table.newWrite("test");
+
+        tableWrite.write(
+                GenericRow.of(0, BinaryString.fromString("nice"), new BlobData(blobBytes)));
+
+        List<CommitMessage> commitMessages = tableWrite.prepareCommit();
+
+        FileStoreCommitImpl fileStoreCommit =
+                (FileStoreCommitImpl) table.store().newCommit("test", table);
+        ManifestCommittable committable = new ManifestCommittable(Long.MAX_VALUE);
+        commitMessages.forEach(committable::addFileCommittable);
+        FileStoreCommitImpl.tryAgain = true;
+        fileStoreCommit.overwritePartition(
+                Collections.singletonMap("f0", "0"), committable, Collections.emptyMap());
+        List<Snapshot> snapshots = new ArrayList<>();
+        table.snapshotManager().snapshots().forEachRemaining(snapshots::add);
+
+        Snapshot latestSnapshot = table.store().snapshotManager().latestSnapshot();
+
+        List<ManifestFileMeta> metas =
+                table.newSnapshotReader()
+                        .manifestsReader()
+                        .read(latestSnapshot, ScanMode.ALL)
+                        .allManifests;
+
+        for (ManifestFileMeta meta : metas) {
+            List<ManifestEntry> entries = new ArrayList<>();
+            entries.addAll(table.store().newScan().readManifest(meta));
+
+            FileEntry.mergeEntries(entries);
+        }
+
+        List<Partition> partitions = new PartitionsTable.PartitionsRead(table).listPartitions();
+
+        return;
+    }
+
     protected Schema schemaDefault() {
         Schema.Builder schemaBuilder = Schema.newBuilder();
         schemaBuilder.column("f0", DataTypes.INT());
@@ -204,6 +261,7 @@ public class BlobTableTest extends TableTestBase {
         schemaBuilder.option(CoreOptions.TARGET_FILE_SIZE.key(), "25 MB");
         schemaBuilder.option(CoreOptions.ROW_TRACKING_ENABLED.key(), "true");
         schemaBuilder.option(CoreOptions.DATA_EVOLUTION_ENABLED.key(), "true");
+        schemaBuilder.partitionKeys("f0");
         return schemaBuilder.build();
     }
 

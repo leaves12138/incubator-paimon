@@ -168,7 +168,7 @@ public class PartitionsTable implements ReadonlyTable {
         }
     }
 
-    private static class PartitionsRead implements InnerTableRead {
+    public static class PartitionsRead implements InnerTableRead {
 
         private final FileStoreTable fileStoreTable;
 
@@ -313,7 +313,7 @@ public class PartitionsTable implements ReadonlyTable {
                             Instant.ofEpochMilli(epochMillis), ZoneId.systemDefault()));
         }
 
-        private List<Partition> listPartitions() {
+        public List<Partition> listPartitions() {
             CatalogLoader catalogLoader = fileStoreTable.catalogEnvironment().catalogLoader();
             if (TimeTravelUtil.hasTimeTravelOptions(new Options(fileStoreTable.options()))
                     || catalogLoader == null) {

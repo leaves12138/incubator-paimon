@@ -1012,7 +1012,7 @@ public class FileStoreCommitImpl implements FileStoreCommit {
     }
 
     @VisibleForTesting
-    CommitResult tryCommitOnce(
+    public CommitResult tryCommitOnce(
             @Nullable RetryResult retryResult,
             List<ManifestEntry> deltaFiles,
             List<ManifestEntry> changelogFiles,
@@ -1284,8 +1284,17 @@ public class FileStoreCommitImpl implements FileStoreCommit {
         commitCallbacks.forEach(
                 callback ->
                         callback.call(finalBaseFiles, finalDeltaFiles, indexFiles, newSnapshot));
+        if (tryAgain) {
+            tryAgain = false;
+            return new RetryResult(
+                    latestSnapshot,
+                    baseDataFiles,
+                    new RuntimeException("Mock dlf connection loss."));
+        }
         return new SuccessResult();
     }
+
+    public static boolean tryAgain = false;
 
     public boolean replaceManifestList(
             Snapshot latest,
