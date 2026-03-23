@@ -31,7 +31,7 @@ under the License.
     <artifactId>paimon-parent</artifactId>
     <groupId>org.apache.paimon</groupId>
     <name>Paimon : </name>
-    <version>1.4-SNAPSHOT</version>
+    <version>1-ali-25-SNAPSHOT</version>
     <packaging>pom</packaging>
 
     <url>https://paimon.apache.org</url>
@@ -76,7 +76,7 @@ under the License.
     </modules>
 
     <properties>
-        <project.build.outputTimestamp>2025-09-16T01:56:37Z</project.build.outputTimestamp>
+        <project.build.outputTimestamp>2026-03-23T10:56:17Z</project.build.outputTimestamp>
         <paimon.shade.version>0.8.0</paimon.shade.version>
         <paimon.shade.jackson.version>2.14.2</paimon.shade.jackson.version>
         <paimon.shade.guava.version>30.1.1-jre</paimon.shade.guava.version>
@@ -1166,4 +1166,14 @@ under the License.
         </repository>
     </repositories>
     -->
+    <distributionManagement>
+        <repository>
+            <id>releases</id>
+            <url>http://mvnrepo.alibaba-inc.com/mvn/releases</url>
+        </repository>
+        <snapshotRepository>
+            <id>snapshots</id>
+            <url>http://mvnrepo.alibaba-inc.com/mvn/snapshots</url>
+        </snapshotRepository>
+    </distributionManagement>
 </project>
