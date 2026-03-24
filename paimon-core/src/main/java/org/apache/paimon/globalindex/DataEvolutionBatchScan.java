@@ -305,7 +305,7 @@ public class DataEvolutionBatchScan implements DataTableScan {
     }
 
     @VisibleForTesting
-    static Plan wrapToIndexSplits(
+    public static Plan wrapToIndexSplits(
             List<Split> splits, RowRangeIndex rowRangeIndex, ScoreGetter scoreGetter) {
         List<Split> indexedSplits = new ArrayList<>();
         Function<Split, List<IndexedSplit>> process =
