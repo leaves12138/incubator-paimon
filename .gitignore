@@ -43,3 +43,8 @@ paimon-python/dev/log
 ### Misc ###
 *.swp
 .cache
+
+### Rust ###
+Cargo.lock
+### Tantivy lib ###
+*libtantivy_jni*

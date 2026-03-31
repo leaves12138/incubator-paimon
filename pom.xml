@@ -73,10 +73,11 @@ under the License.
         <module>tools/ci/paimon-ci-tools</module>
         <module>paimon-api</module>
         <module>paimon-lumina</module>
+        <module>paimon-tantivy</module>
     </modules>
 
     <properties>
-        <project.build.outputTimestamp>2026-03-23T10:56:17Z</project.build.outputTimestamp>
+        <project.build.outputTimestamp>2025-09-16T01:56:37Z</project.build.outputTimestamp>
         <paimon.shade.version>0.8.0</paimon.shade.version>
         <paimon.shade.jackson.version>2.14.2</paimon.shade.jackson.version>
         <paimon.shade.guava.version>30.1.1-jre</paimon.shade.guava.version>
@@ -626,6 +627,8 @@ under the License.
                         <exclude>paimon-common/src/main/antlr4/**</exclude>
                         <exclude>paimon-core/src/test/resources/compatibility/**</exclude>
                         <exclude>paimon-python/pypaimon/sample/data/**</exclude>
+                        <exclude>**/*.proto</exclude>
+                        <exclude>**/Cargo*</exclude>
                     </excludes>
                 </configuration>
             </plugin>
