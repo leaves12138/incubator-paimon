@@ -2273,7 +2273,9 @@ public class CoreOptions implements Serializable {
                     .noDefaultValue()
                     .withDescription(
                             "Specifies column names that should be stored as blob type. "
-                                    + "This is used when you want to treat a BYTES column as a BLOB.");
+                                    + "This is used when you want to treat a BYTES column as a BLOB. "
+                                    + "Fields listed in blob-descriptor-field or blob-view-field "
+                                    + "are also treated as BLOB fields.");
 
     @Immutable
     public static final ConfigOption<String> BLOB_DESCRIPTOR_FIELD =
@@ -2282,7 +2284,7 @@ public class CoreOptions implements Serializable {
                     .noDefaultValue()
                     .withFallbackKeys("blob.stored-descriptor-fields")
                     .withDescription(
-                            "Comma-separated BLOB field names, selected from blob-field, to store "
+                            "Comma-separated field names to treat as BLOB fields and store "
                                     + "as serialized BlobDescriptor bytes inline in data files.");
 
     @Immutable
@@ -2291,7 +2293,7 @@ public class CoreOptions implements Serializable {
                     .stringType()
                     .noDefaultValue()
                     .withDescription(
-                            "Comma-separated BLOB field names, selected from blob-field, to store "
+                            "Comma-separated field names to treat as BLOB fields and store "
                                     + "as serialized BlobViewStruct bytes inline in data files and "
                                     + "resolve from upstream tables at read time.");
 
