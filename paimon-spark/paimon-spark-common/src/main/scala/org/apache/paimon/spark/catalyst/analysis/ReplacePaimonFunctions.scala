@@ -134,11 +134,17 @@ case class ReplacePaimonFunctions(spark: SparkSession) extends Rule[LogicalPlan]
   }
 
   private def replaceBlobView(arguments: Seq[Expression]): Expression = {
+    replaceBlobView(arguments, spark.sessionState.catalogManager.currentCatalog)
+  }
+
+  private def replaceBlobView(
+      arguments: Seq[Expression],
+      defaultCatalog: CatalogPlugin): Expression = {
     assert(arguments.size == 3)
     val tableName = literalString(arguments(0), "tableName")
     val fieldName = literalString(arguments(1), "fieldName")
     ReplacePaimonFunctions.resolveBlobView(
-      spark, tableName, fieldName, arguments(2), spark.sessionState.catalogManager.currentCatalog)
+      spark, tableName, fieldName, arguments(2), defaultCatalog)
   }
 
   private def literalString(child: Expression, argumentName: String): String = {
@@ -153,11 +159,23 @@ case class ReplacePaimonFunctions(spark: SparkSession) extends Rule[LogicalPlan]
     }
   }
 
-  private def isBlobViewInvoke(invoke: Invoke): Boolean = {
-    if (invoke.functionName != "invoke" || !invoke.targetObject.foldable) {
-      false
+  private def blobViewFunctionCatalog(function: BlobViewSparkFunction): CatalogPlugin = {
+    val catalogName = function.catalogName()
+    if (catalogName == null) {
+      spark.sessionState.catalogManager.currentCatalog
     } else {
-      invoke.targetObject.eval().isInstanceOf[BlobViewSparkFunction]
+      spark.sessionState.catalogManager.catalog(catalogName)
+    }
+  }
+
+  private def blobViewFunction(invoke: Invoke): Option[BlobViewSparkFunction] = {
+    if (invoke.functionName != "invoke" || !invoke.targetObject.foldable) {
+      None
+    } else {
+      invoke.targetObject.eval() match {
+        case function: BlobViewSparkFunction => Some(function)
+        case _ => None
+      }
     }
   }
 
@@ -171,9 +189,18 @@ case class ReplacePaimonFunctions(spark: SparkSession) extends Rule[LogicalPlan]
         case func: ApplyFunctionExpression
             if func.function.name() == PaimonFunctions.BLOB_VIEW &&
               func.function.canonicalName().startsWith("paimon") =>
-          replaceBlobView(func.children)
-        case invoke: Invoke if isBlobViewInvoke(invoke) =>
-          replaceBlobView(invoke.arguments)
+          func.function match {
+            case function: BlobViewSparkFunction =>
+              replaceBlobView(func.children, blobViewFunctionCatalog(function))
+            case _ =>
+              replaceBlobView(func.children)
+          }
+        case invoke: Invoke =>
+          blobViewFunction(invoke) match {
+            case Some(function) =>
+              replaceBlobView(invoke.arguments, blobViewFunctionCatalog(function))
+            case None => invoke
+          }
       }
     }
   }
