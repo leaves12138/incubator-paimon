@@ -201,7 +201,7 @@ class BlobTestBase extends PaimonSparkTestBase {
   }
 
   test("Blob: test write blob view with built-in function") {
-    withTable("upstream_blob_view", "downstream_blob_view") {
+    withTable("upstream_blob_view", "downstream_blob_view", "downstream_blob_view_by_catalog") {
       sql(
         "CREATE TABLE upstream_blob_view (id INT, name STRING, picture BINARY) " +
           "TBLPROPERTIES (" +
@@ -230,6 +230,31 @@ class BlobTestBase extends PaimonSparkTestBase {
 
       checkAnswer(
         sql("SELECT * FROM downstream_blob_view ORDER BY id"),
+        Seq(
+          Row(1, "row1", Array[Byte](72, 101, 108, 108, 111)),
+          Row(2, "row2", Array[Byte](89, 69)))
+      )
+
+      sql(
+        "CREATE TABLE downstream_blob_view_by_catalog (id INT, label STRING, image_ref BINARY) " +
+          "TBLPROPERTIES (" +
+          "'row-tracking.enabled'='true', " +
+          "'data-evolution.enabled'='true', " +
+          "'blob-field'='image_ref', " +
+          "'blob-view-field'='image_ref')")
+
+      try {
+        sql("USE spark_catalog")
+        sql(
+          s"INSERT INTO paimon.$dbName0.downstream_blob_view_by_catalog " +
+            s"SELECT id, name, paimon.sys.blob_view('$upstreamFullName', 'picture', _ROW_ID) " +
+            s"FROM paimon.$dbName0.`upstream_blob_view$$row_tracking`")
+      } finally {
+        sql(s"USE paimon.$dbName0")
+      }
+
+      checkAnswer(
+        sql("SELECT * FROM downstream_blob_view_by_catalog ORDER BY id"),
         Seq(
           Row(1, "row1", Array[Byte](72, 101, 108, 108, 111)),
           Row(2, "row2", Array[Byte](89, 69)))

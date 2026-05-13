@@ -36,6 +36,7 @@ import org.apache.paimon.spark.catalog.SupportV1Function;
 import org.apache.paimon.spark.catalog.SupportView;
 import org.apache.paimon.spark.catalog.functions.PaimonFunctions;
 import org.apache.paimon.spark.catalog.functions.V1FunctionConverter;
+import org.apache.paimon.spark.function.BlobViewUnbound;
 import org.apache.paimon.spark.utils.CatalogUtils;
 import org.apache.paimon.table.FormatTable;
 import org.apache.paimon.table.iceberg.IcebergTable;
@@ -558,6 +559,9 @@ public class SparkCatalog extends SparkBaseCatalog
     public UnboundFunction loadFunction(Identifier ident) throws NoSuchFunctionException {
         String[] namespace = ident.namespace();
         if (isSystemFunctionNamespace(namespace)) {
+            if (PaimonFunctions.BLOB_VIEW().equals(ident.name())) {
+                return new BlobViewUnbound(catalogName);
+            }
             UnboundFunction func = PaimonFunctions.load(ident.name());
             if (func != null) {
                 return func;

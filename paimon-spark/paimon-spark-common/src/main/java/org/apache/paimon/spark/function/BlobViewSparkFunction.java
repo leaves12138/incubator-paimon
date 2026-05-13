@@ -23,10 +23,27 @@ import org.apache.spark.sql.types.DataType;
 import org.apache.spark.sql.types.DataTypes;
 import org.apache.spark.unsafe.types.UTF8String;
 
+import javax.annotation.Nullable;
+
 import java.io.Serializable;
 
 /** Spark scalar function resolved by Spark analysis before execution. */
 public class BlobViewSparkFunction implements ScalarFunction<byte[]>, Serializable {
+
+    @Nullable private final String catalogName;
+
+    public BlobViewSparkFunction() {
+        this(null);
+    }
+
+    public BlobViewSparkFunction(@Nullable String catalogName) {
+        this.catalogName = catalogName;
+    }
+
+    @Nullable
+    public String catalogName() {
+        return catalogName;
+    }
 
     @Override
     public DataType[] inputTypes() {

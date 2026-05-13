@@ -24,8 +24,20 @@ import org.apache.spark.sql.types.LongType;
 import org.apache.spark.sql.types.StringType;
 import org.apache.spark.sql.types.StructType;
 
+import javax.annotation.Nullable;
+
 /** Function unbound to {@link BlobViewSparkFunction}. */
 public class BlobViewUnbound implements UnboundFunction {
+
+    @Nullable private final String catalogName;
+
+    public BlobViewUnbound() {
+        this(null);
+    }
+
+    public BlobViewUnbound(@Nullable String catalogName) {
+        this.catalogName = catalogName;
+    }
 
     @Override
     public BoundFunction bind(StructType inputType) {
@@ -47,7 +59,7 @@ public class BlobViewUnbound implements UnboundFunction {
             throw new UnsupportedOperationException(
                     "The third argument of 'blob_view' must be BIGINT type.");
         }
-        return new BlobViewSparkFunction();
+        return new BlobViewSparkFunction(catalogName);
     }
 
     @Override

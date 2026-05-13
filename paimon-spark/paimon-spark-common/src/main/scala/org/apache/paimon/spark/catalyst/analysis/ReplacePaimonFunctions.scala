@@ -31,6 +31,7 @@ import org.apache.spark.sql.catalyst.expressions.{ApplyFunctionExpression, Cast,
 import org.apache.spark.sql.catalyst.expressions.objects.Invoke
 import org.apache.spark.sql.catalyst.plans.logical.{AnalysisHelper, LogicalPlan}
 import org.apache.spark.sql.catalyst.rules.Rule
+import org.apache.spark.sql.connector.catalog.CatalogPlugin
 import org.apache.spark.sql.connector.catalog.PaimonCatalogImplicits._
 import org.apache.spark.sql.types.{BinaryType, StringType}
 import org.apache.spark.unsafe.types.UTF8String
@@ -43,12 +44,13 @@ object ReplacePaimonFunctions {
       spark: SparkSession,
       tableName: String,
       fieldName: String,
-      rowId: Expression): Expression = {
+      rowId: Expression,
+      defaultCatalog: CatalogPlugin): Expression = {
     if (tableName == null || fieldName == null) {
       Literal(null, BinaryType)
     } else {
       val catalogAndIdentifier = SparkUtils
-        .catalogAndIdentifier(spark, tableName, spark.sessionState.catalogManager.currentCatalog)
+        .catalogAndIdentifier(spark, tableName, defaultCatalog)
       if (!catalogAndIdentifier.catalog().isInstanceOf[SparkBaseCatalog]) {
         throw new UnsupportedOperationException(
           s"${catalogAndIdentifier.catalog()} is not a Paimon catalog")
@@ -135,7 +137,8 @@ case class ReplacePaimonFunctions(spark: SparkSession) extends Rule[LogicalPlan]
     assert(arguments.size == 3)
     val tableName = literalString(arguments(0), "tableName")
     val fieldName = literalString(arguments(1), "fieldName")
-    ReplacePaimonFunctions.resolveBlobView(spark, tableName, fieldName, arguments(2))
+    ReplacePaimonFunctions.resolveBlobView(
+      spark, tableName, fieldName, arguments(2), spark.sessionState.catalogManager.currentCatalog)
   }
 
   private def literalString(child: Expression, argumentName: String): String = {

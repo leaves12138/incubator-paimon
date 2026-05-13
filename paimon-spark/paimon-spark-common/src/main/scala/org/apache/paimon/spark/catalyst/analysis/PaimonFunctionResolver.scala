@@ -19,7 +19,7 @@
 package org.apache.paimon.spark.catalyst.analysis
 
 import org.apache.paimon.catalog.Catalog.SYSTEM_DATABASE_NAME
-import org.apache.paimon.spark.catalog.SupportV1Function
+import org.apache.paimon.spark.catalog.{SparkBaseCatalog, SupportV1Function}
 import org.apache.paimon.spark.catalog.functions.PaimonFunctions
 
 import org.apache.spark.sql.SparkSession
@@ -29,8 +29,11 @@ import org.apache.spark.sql.catalyst.parser.extensions.UnResolvedPaimonV1Functio
 import org.apache.spark.sql.catalyst.plans.logical.LogicalPlan
 import org.apache.spark.sql.catalyst.rules.Rule
 import org.apache.spark.sql.catalyst.trees.TreePattern.UNRESOLVED_FUNCTION
+import org.apache.spark.sql.connector.catalog.CatalogPlugin
 import org.apache.spark.sql.types.{LongType, StringType}
 import org.apache.spark.unsafe.types.UTF8String
+
+import scala.util.control.NonFatal
 
 case class PaimonFunctionResolver(spark: SparkSession) extends Rule[LogicalPlan] {
 
@@ -40,9 +43,11 @@ case class PaimonFunctionResolver(spark: SparkSession) extends Rule[LogicalPlan]
     plan.resolveOperatorsUpWithPruning(_.containsAnyPattern(UNRESOLVED_FUNCTION)) {
       case l: LogicalPlan =>
         l.transformExpressionsWithPruning(_.containsAnyPattern(UNRESOLVED_FUNCTION)) {
-          case u: UnresolvedFunction
-              if isBlobViewFunction(u.nameParts) && u.arguments.forall(_.resolved) =>
-            resolveBlobView(u)
+          case u: UnresolvedFunction if u.arguments.forall(_.resolved) =>
+            blobViewFunctionCatalog(u.nameParts) match {
+              case Some(functionCatalog) => resolveBlobView(u, functionCatalog)
+              case None => u
+            }
           case u: UnResolvedPaimonV1Function if u.arguments.forall(_.resolved) =>
             u.funcIdent.catalog match {
               case Some(catalog) =>
@@ -58,7 +63,7 @@ case class PaimonFunctionResolver(spark: SparkSession) extends Rule[LogicalPlan]
         }
     }
 
-  private def resolveBlobView(u: UnresolvedFunction): Expression = {
+  private def resolveBlobView(u: UnresolvedFunction, functionCatalog: CatalogPlugin): Expression = {
     if (u.arguments.length != 3) {
       throw new UnsupportedOperationException(
         s"Function 'blob_view' requires 3 arguments " +
@@ -70,7 +75,8 @@ case class PaimonFunctionResolver(spark: SparkSession) extends Rule[LogicalPlan]
       throw new UnsupportedOperationException(
         "The third argument of 'blob_view' must be BIGINT type.")
     }
-    ReplacePaimonFunctions.resolveBlobView(spark, tableName, fieldName, u.arguments(2))
+    ReplacePaimonFunctions.resolveBlobView(
+      spark, tableName, fieldName, u.arguments(2), functionCatalog)
   }
 
   private def literalString(expr: Expression, argumentName: String): String = {
@@ -89,9 +95,31 @@ case class PaimonFunctionResolver(spark: SparkSession) extends Rule[LogicalPlan]
     }
   }
 
-  private def isBlobViewFunction(nameParts: Seq[String]): Boolean = {
-    nameParts.length >= 2 &&
-    nameParts.last.equalsIgnoreCase(PaimonFunctions.BLOB_VIEW) &&
-    nameParts(nameParts.length - 2).equalsIgnoreCase(SYSTEM_DATABASE_NAME)
+  private def blobViewFunctionCatalog(nameParts: Seq[String]): Option[CatalogPlugin] = {
+    nameParts match {
+      case Seq(databaseName, functionName)
+          if isBlobViewFunction(databaseName, functionName) =>
+        paimonCatalog(catalogManager.currentCatalog)
+      case Seq(catalogName, databaseName, functionName)
+          if isBlobViewFunction(databaseName, functionName) =>
+        try {
+          paimonCatalog(catalogManager.catalog(catalogName))
+        } catch {
+          case NonFatal(_) => None
+        }
+      case _ => None
+    }
+  }
+
+  private def paimonCatalog(catalog: CatalogPlugin): Option[CatalogPlugin] = {
+    catalog match {
+      case _: SparkBaseCatalog => Some(catalog)
+      case _ => None
+    }
+  }
+
+  private def isBlobViewFunction(databaseName: String, functionName: String): Boolean = {
+    functionName.equalsIgnoreCase(PaimonFunctions.BLOB_VIEW) &&
+    databaseName.equalsIgnoreCase(SYSTEM_DATABASE_NAME)
   }
 }
