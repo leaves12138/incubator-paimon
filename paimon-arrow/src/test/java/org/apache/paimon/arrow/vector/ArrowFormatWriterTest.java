@@ -406,6 +406,35 @@ public class ArrowFormatWriterTest {
         }
     }
 
+    @Test
+    public void testWriterClosesExternalAllocatorByDefault() {
+        CloseCountingRootAllocator allocator = new CloseCountingRootAllocator();
+        try {
+            ArrowFormatWriter writer =
+                    new ArrowFormatWriter(PRIMITIVE_TYPE, 4096, true, allocator, null);
+            writer.close();
+            assertThat(allocator.closeCount()).isEqualTo(1);
+        } finally {
+            if (allocator.closeCount() == 0) {
+                allocator.close();
+            }
+        }
+    }
+
+    @Test
+    public void testWriterWithBorrowedAllocatorDoesNotCloseAllocator() {
+        CloseCountingRootAllocator allocator = new CloseCountingRootAllocator();
+        try {
+            ArrowFormatWriter writer =
+                    ArrowFormatWriter.forBorrowedAllocator(
+                            PRIMITIVE_TYPE, 4096, true, allocator, null);
+            writer.close();
+            assertThat(allocator.closeCount()).isZero();
+        } finally {
+            allocator.close();
+        }
+    }
+
     @ParameterizedTest
     @ValueSource(booleans = {false, true})
     public void testWriteWithExternalAllocator(boolean allocationFailed) {
@@ -692,5 +721,39 @@ public class ArrowFormatWriterTest {
             bytes[i] = (byte) RND.nextInt(10);
         }
         return bytes;
+    }
+
+    @Test
+    public void testTimestampArrowFieldTypeTimezone() {
+        for (int precision : new int[] {0, 3, 6, 9}) {
+            // TIMESTAMP_LTZ should use UTC
+            FieldType ltzFieldType =
+                    DataTypes.TIMESTAMP_WITH_LOCAL_TIME_ZONE(precision)
+                            .accept(ArrowFieldTypeConversion.ARROW_FIELD_TYPE_VISITOR);
+            ArrowType.Timestamp ltzType = (ArrowType.Timestamp) ltzFieldType.getType();
+            assertThat(ltzType.getTimezone()).isEqualTo("UTC");
+
+            // TIMESTAMP should have no timezone
+            FieldType tsFieldType =
+                    DataTypes.TIMESTAMP(precision)
+                            .accept(ArrowFieldTypeConversion.ARROW_FIELD_TYPE_VISITOR);
+            ArrowType.Timestamp tsType = (ArrowType.Timestamp) tsFieldType.getType();
+            assertThat(tsType.getTimezone()).isNull();
+        }
+    }
+
+    private static class CloseCountingRootAllocator extends RootAllocator {
+
+        private int closeCount;
+
+        @Override
+        public void close() {
+            closeCount++;
+            super.close();
+        }
+
+        int closeCount() {
+            return closeCount;
+        }
     }
 }
