@@ -279,6 +279,7 @@ public class CoreOptions implements Serializable {
     public static final String FILE_FORMAT_CSV = "csv";
     public static final String FILE_FORMAT_TEXT = "text";
     public static final String FILE_FORMAT_JSON = "json";
+    public static final String FILE_FORMAT_MOSAIC = "mosaic";
 
     public static final ConfigOption<String> FILE_FORMAT =
             key("file.format")
@@ -2670,6 +2671,7 @@ public class CoreOptions implements Serializable {
                     return "snappy";
                 case FILE_FORMAT_AVRO:
                 case FILE_FORMAT_ORC:
+                case FILE_FORMAT_MOSAIC:
                     return "zstd";
                 case FILE_FORMAT_CSV:
                 case FILE_FORMAT_TEXT:
