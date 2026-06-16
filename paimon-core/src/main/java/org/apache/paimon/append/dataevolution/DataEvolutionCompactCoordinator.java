@@ -76,7 +76,7 @@ public class DataEvolutionCompactCoordinator {
         this.scanner =
                 new CompactScanner(
                         table.newSnapshotReader().withPartitionFilter(partitionPredicate),
-                        table.store().newScan());
+                        table.store().newScan().withPartitionFilter(partitionPredicate));
         this.planner =
                 new CompactPlanner(
                         compactBlob,
