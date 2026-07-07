@@ -363,28 +363,13 @@ public class DataEvolutionCompactCoordinator {
             }
 
             if (compactBlob) {
-                if (triggerNormalFile) {
-                    List<DataFileMeta> blobFiles = new ArrayList<>();
-                    for (DataFileMeta dataFile : dataFiles) {
-                        blobFiles.addAll(
-                                dataFileToBlobFiles.getOrDefault(
-                                        dataFile, Collections.emptyList()));
-                    }
+                for (DataFileMeta dataFile : dataFiles) {
                     for (List<DataFileMeta> blobFilesToCompact :
-                            blobFileGroupsToCompact(blobFiles)) {
+                            blobFileGroupsToCompact(
+                                    dataFileToBlobFiles.getOrDefault(
+                                            dataFile, Collections.emptyList()))) {
                         tasks.add(
                                 new DataEvolutionCompactTask(partition, blobFilesToCompact, true));
-                    }
-                } else {
-                    for (DataFileMeta dataFile : dataFiles) {
-                        for (List<DataFileMeta> blobFilesToCompact :
-                                blobFileGroupsToCompact(
-                                        dataFileToBlobFiles.getOrDefault(
-                                                dataFile, Collections.emptyList()))) {
-                            tasks.add(
-                                    new DataEvolutionCompactTask(
-                                            partition, blobFilesToCompact, true));
-                        }
                     }
                 }
             }
