@@ -1416,7 +1416,28 @@ class DedicatedFormatWriterTest(unittest.TestCase):
         update_builder.new_commit().commit(update_messages)
 
         read_builder = table.new_read_builder().with_projection(['id', 'payloads'])
-        result = read_builder.new_read().to_arrow(read_builder.new_scan().plan().splits())
+        concurrent_calls = []
+        original_read_blobs_concurrent = table.file_io.read_blobs_concurrent
+
+        def read_blobs_concurrent(blobs, parallelism):
+            concurrent_calls.append((list(blobs), parallelism))
+            return original_read_blobs_concurrent(blobs, parallelism)
+
+        table.file_io.read_blobs_concurrent = read_blobs_concurrent
+        try:
+            result = read_builder.new_read().to_arrow(
+                read_builder.new_scan().plan().splits(),
+                blob_parallelism=4,
+            )
+        finally:
+            table.file_io.read_blobs_concurrent = original_read_blobs_concurrent
+
+        self.assertTrue(concurrent_calls)
+        self.assertTrue(all(call[1] == 4 for call in concurrent_calls))
+        self.assertEqual(
+            sum(len(call[0]) for call in concurrent_calls),
+            4,
+        )
         self.assertEqual(
             {
                 row['id']: row['payloads']

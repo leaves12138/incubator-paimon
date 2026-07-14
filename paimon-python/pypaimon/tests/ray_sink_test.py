@@ -24,9 +24,44 @@ import pyarrow as pa
 from ray.data._internal.execution.interfaces import TaskContext
 
 from pypaimon import CatalogFactory, Schema
-from pypaimon.write.ray_datasink import PaimonDatasink
+from pypaimon.write.ray_datasink import (
+    PaimonDatasink,
+    _cast_binary_to_table_schema,
+)
 from pypaimon.write.commit_message import CommitMessage
 from pypaimon.write.table_write import TableWrite
+
+
+class RayBlobSchemaCastTest(unittest.TestCase):
+    def test_casts_array_blob_elements_to_target_schema(self):
+        source = pa.table({
+            'id': [1, 2],
+            'payloads': pa.array(
+                [[b'a', None], None], type=pa.list_(pa.binary())
+            ),
+            'null_payloads': pa.array(
+                [[None], None], type=pa.list_(pa.null())
+            ),
+            'null_arrays': pa.nulls(2),
+            'non_null_payloads': pa.array(
+                [[b'x'], []], type=pa.list_(pa.large_binary())
+            ),
+        })
+        non_null_array_blob = pa.list_(
+            pa.field('item', pa.large_binary(), nullable=False)
+        )
+        target_schema = pa.schema([
+            ('id', pa.int64()),
+            ('payloads', pa.list_(pa.large_binary())),
+            ('null_payloads', pa.list_(pa.large_binary())),
+            ('null_arrays', pa.list_(pa.large_binary())),
+            ('non_null_payloads', non_null_array_blob),
+        ])
+
+        result = _cast_binary_to_table_schema(source, target_schema)
+
+        self.assertEqual(result.schema, target_schema)
+        self.assertEqual(result.to_pylist(), source.to_pylist())
 
 
 class RaySinkTest(unittest.TestCase):

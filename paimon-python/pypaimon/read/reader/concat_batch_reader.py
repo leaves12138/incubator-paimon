@@ -22,6 +22,7 @@ import pyarrow as pa
 import pyarrow.dataset as ds
 from pyarrow import RecordBatch
 
+from pypaimon.common.file_io import FileIO
 from pypaimon.manifest.schema.data_file_meta import DataFileMeta
 from pypaimon.read.reader.format_blob_reader import BlobRecordIterator
 from pypaimon.read.reader.iface.record_batch_reader import RecordBatchReader
@@ -260,12 +261,15 @@ class BlobFallbackBatchReader(RecordBatchReader):
 
     def __init__(self, file_reader_suppliers: List[Tuple[DataFileMeta, Callable]],
                  field_name: str, output_type, row_ranges: Optional[List[Range]] = None,
-                 blob_as_descriptor: bool = False, deletion_vector=None, batch_size: int = 1024):
+                 blob_as_descriptor: bool = False, deletion_vector=None, batch_size: int = 1024,
+                 blob_parallelism: int = 1, file_io: Optional[FileIO] = None):
         self._file_reader_suppliers = file_reader_suppliers
         self._field_name = field_name
         self._output_type = output_type
         self._row_ranges = Range.sort_and_merge_overlap(row_ranges) if row_ranges else None
         self._blob_as_descriptor = blob_as_descriptor
+        self._blob_parallelism = blob_parallelism
+        self._file_io = file_io
         self._is_array_blob = pa.types.is_list(output_type) or pa.types.is_large_list(output_type)
         self._data_field = DataField(
             0,
@@ -317,18 +321,13 @@ class BlobFallbackBatchReader(RecordBatchReader):
                     group[row_id] = (None, False)
                 elif blob is Blob.PLACE_HOLDER or blob is Blob.ARRAY_PLACE_HOLDER:
                     group[row_id] = (None, True)
-                elif self._is_array_blob:
-                    group[row_id] = (self._array_value_for_arrow(blob), False)
                 else:
-                    if self._blob_as_descriptor:
-                        group[row_id] = (blob.to_descriptor().serialize(), False)
-                    else:
-                        group[row_id] = (blob.to_data(), False)
+                    group[row_id] = (blob, False)
 
         if not groups:
             return None
 
-        result = []
+        selected_blobs = []
         for row_id in batch_row_ids:
             found = False
             for max_sequence_number in sorted(groups.keys(), reverse=True):
@@ -337,27 +336,67 @@ class BlobFallbackBatchReader(RecordBatchReader):
                     continue
                 value, is_placeholder = candidate
                 if not is_placeholder:
-                    result.append(value)
+                    selected_blobs.append(value)
                     found = True
                     break
             if not found:
                 raise ValueError("All blob files at the same row id store a placeholder.")
+
+        result = []
+        blobs_to_resolve = []
+        for row_index, blob in enumerate(selected_blobs):
+            result.append(
+                self._value_for_arrow(blob, row_index, blobs_to_resolve)
+            )
+        if blobs_to_resolve:
+            self._resolve_blobs_concurrent(result, blobs_to_resolve)
 
         return pa.RecordBatch.from_arrays(
             [pa.array(result, type=self._output_type)],
             names=[self._field_name],
         )
 
-    def _array_value_for_arrow(self, blob_array):
+    def _value_for_arrow(self, blob, row_index, blobs_to_resolve):
+        if blob is None:
+            return None
+        if self._is_array_blob:
+            return self._array_value_for_arrow(
+                blob, row_index, blobs_to_resolve
+            )
+        if self._blob_as_descriptor:
+            return blob.to_descriptor().serialize()
+        if self._blob_parallelism > 1:
+            blobs_to_resolve.append((row_index, None, blob))
+            return None
+        return blob.to_data()
+
+    def _array_value_for_arrow(self, blob_array, row_index, blobs_to_resolve):
         result = []
-        for blob in blob_array:
+        for element_index, blob in enumerate(blob_array):
             if blob is None:
                 result.append(None)
             elif self._blob_as_descriptor:
                 result.append(blob.to_descriptor().serialize())
+            elif self._blob_parallelism > 1:
+                result.append(None)
+                blobs_to_resolve.append((row_index, element_index, blob))
             else:
                 result.append(blob.to_data())
         return result
+
+    def _resolve_blobs_concurrent(self, result, blobs_to_resolve):
+        if self._file_io is None:
+            raise RuntimeError("FileIO is required for concurrent blob fallback reads.")
+        blobs = [item[2] for item in blobs_to_resolve]
+        resolved = self._file_io.read_blobs_concurrent(
+            blobs, self._blob_parallelism
+        )
+        for target, data in zip(blobs_to_resolve, resolved):
+            row_index, element_index, _ = target
+            if element_index is None:
+                result[row_index] = data
+            else:
+                result[row_index][element_index] = data
 
     def _compute_target_ranges(self) -> List[Range]:
         ranges = Range.sort_and_merge_overlap([
@@ -456,7 +495,9 @@ class BlobFallbackBatchReader(RecordBatchReader):
                 blob_offsets,
                 self._data_field,
                 reader._input_stream,
-                blob_as_descriptor=self._blob_as_descriptor,
+                blob_as_descriptor=(
+                    self._blob_as_descriptor or self._blob_parallelism > 1
+                ),
             )
 
             blobs = []

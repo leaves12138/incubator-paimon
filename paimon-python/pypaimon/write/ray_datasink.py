@@ -37,16 +37,59 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _is_blob_target(target_type: pa.DataType) -> bool:
+    if pa.types.is_large_binary(target_type):
+        return True
+    if pa.types.is_list(target_type) or pa.types.is_large_list(target_type):
+        return _is_blob_target(target_type.value_type)
+    return False
+
+
+def _is_compatible_blob_source(
+    source_type: pa.DataType, target_type: pa.DataType
+) -> bool:
+    if pa.types.is_null(source_type):
+        return _is_blob_target(target_type)
+    if pa.types.is_large_binary(target_type):
+        return (
+            pa.types.is_binary(source_type)
+            or pa.types.is_large_binary(source_type)
+            or pa.types.is_fixed_size_binary(source_type)
+        )
+    if pa.types.is_list(target_type) or pa.types.is_large_list(target_type):
+        if not (
+            pa.types.is_list(source_type)
+            or pa.types.is_large_list(source_type)
+        ):
+            return False
+        return _is_compatible_blob_source(
+            source_type.value_type, target_type.value_type
+        )
+    return False
+
+
+def _needs_blob_cast(source_type: pa.DataType, target_type: pa.DataType) -> bool:
+    return (
+        source_type != target_type
+        and _is_compatible_blob_source(source_type, target_type)
+    )
+
+
 def _cast_binary_to_table_schema(table: pa.Table, target_schema: pa.Schema) -> pa.Table:
-    """Cast binary to large_binary for BLOB fields.
+    """Restore scalar and array BLOB types from the Paimon table schema.
 
     When map_batches returns Python dicts, PyArrow infers bytes as binary,
-    losing the original large_binary (BLOB) type. Cast back before writing.
+    losing the original large_binary (BLOB) type, including inside lists.
+    Cast those columns back before writing.
     """
     cast_indices = []
     for i, field in enumerate(table.schema):
-        target_field = target_schema.field(field.name) if field.name in target_schema.names else None
-        if target_field and pa.types.is_binary(field.type) and pa.types.is_large_binary(target_field.type):
+        target_field = (
+            target_schema.field(field.name)
+            if field.name in target_schema.names
+            else None
+        )
+        if target_field and _needs_blob_cast(field.type, target_field.type):
             cast_indices.append(i)
 
     if not cast_indices:
@@ -54,7 +97,9 @@ def _cast_binary_to_table_schema(table: pa.Table, target_schema: pa.Schema) -> p
 
     columns = table.columns
     for i in cast_indices:
-        columns[i] = columns[i].cast(pa.large_binary())
+        columns[i] = columns[i].cast(
+            target_schema.field(table.schema.field(i).name).type
+        )
     fields = [target_schema.field(f.name) if i in cast_indices else f
               for i, f in enumerate(table.schema)]
     return pa.table(columns, schema=pa.schema(fields))

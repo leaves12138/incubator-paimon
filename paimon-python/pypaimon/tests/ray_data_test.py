@@ -720,6 +720,57 @@ class RayDataTest(unittest.TestCase):
             "large_binary type should be lost after dict roundtrip"
         )
 
+    def test_ray_data_write_with_array_blob(self):
+        array_blob_type = pa.list_(pa.large_binary())
+        pa_schema = pa.schema([
+            ('id', pa.int64()),
+            ('payloads', array_blob_type),
+        ])
+        schema = Schema.from_pyarrow_schema(
+            pa_schema,
+            options={
+                'row-tracking.enabled': 'true',
+                'data-evolution.enabled': 'true',
+            },
+        )
+        self.catalog.create_table(
+            'default.test_ray_write_array_blob', schema, False
+        )
+        table = self.catalog.get_table('default.test_ray_write_array_blob')
+
+        dataset = ray.data.from_items([
+            {'id': 1, 'payloads': [b'a', None, b'bc']},
+            {'id': 2, 'payloads': None},
+            {'id': 3, 'payloads': []},
+        ])
+        inferred_batch = next(iter(dataset.iter_batches(batch_format='pyarrow')))
+        inferred_type = inferred_batch.schema.field('payloads').type
+        self.assertTrue(pa_types.is_list(inferred_type))
+        self.assertTrue(pa_types.is_binary(inferred_type.value_type))
+
+        writer = table.new_batch_write_builder().new_write()
+        try:
+            writer.write_ray(dataset, concurrency=1)
+        finally:
+            writer.close()
+
+        read_builder = table.new_read_builder()
+        result = read_builder.new_read().to_arrow(
+            read_builder.new_scan().plan().splits()
+        )
+        self.assertEqual(result.schema.field('payloads').type, array_blob_type)
+        self.assertEqual(
+            {
+                row['id']: row['payloads']
+                for row in result.select(['id', 'payloads']).to_pylist()
+            },
+            {
+                1: [b'a', None, b'bc'],
+                2: None,
+                3: [],
+            },
+        )
+
     def test_ray_data_read_and_write_with_blob(self):
         import time
         pa_schema = pa.schema([

@@ -1263,6 +1263,7 @@ class DataEvolutionSplitRead(SplitRead):
                     ): r]
                     file_record_readers[i] = MergeAllBatchReader(suppliers, batch_size=batch_size)
                 elif DataFileMeta.is_blob_file(first_file.file_name):
+                    blob_parallelism = getattr(self, '_blob_parallelism', 1)
                     file_reader_suppliers = [
                         (
                             file,
@@ -1284,6 +1285,8 @@ class DataEvolutionSplitRead(SplitRead):
                         CoreOptions.blob_as_descriptor(self.table.options),
                         deletion_vector=deletion_vector,
                         batch_size=batch_size,
+                        blob_parallelism=blob_parallelism,
+                        file_io=self.table.file_io,
                     )
                 else:
                     # Create concatenated reader for multiple files
