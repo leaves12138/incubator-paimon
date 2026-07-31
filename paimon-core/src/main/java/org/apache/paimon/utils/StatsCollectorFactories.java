@@ -96,6 +96,16 @@ public class StatsCollectorFactories {
      */
     public static SimpleColStatsCollector.Factory[] createStatsFactoriesForAvro(
             String statsMode, CoreOptions coreOptions, List<String> fields) {
+        return createStatsFactoriesWithoutForcedStats(statsMode, coreOptions, fields);
+    }
+
+    public static SimpleColStatsCollector.Factory[] createStatsFactoriesForChangelog(
+            String statsMode, CoreOptions coreOptions, List<String> fields) {
+        return createStatsFactoriesWithoutForcedStats(statsMode, coreOptions, fields);
+    }
+
+    private static SimpleColStatsCollector.Factory[] createStatsFactoriesWithoutForcedStats(
+            String statsMode, CoreOptions coreOptions, List<String> fields) {
         Options options = coreOptions.toConfiguration();
         SimpleColStatsCollector.Factory[] modes =
                 new SimpleColStatsCollector.Factory[fields.size()];

@@ -53,6 +53,7 @@ import org.apache.paimon.schema.Schema;
 import org.apache.paimon.schema.SchemaManager;
 import org.apache.paimon.schema.SchemaUtils;
 import org.apache.paimon.schema.TableSchema;
+import org.apache.paimon.stats.SimpleStats;
 import org.apache.paimon.table.query.LocalTableQuery;
 import org.apache.paimon.table.sink.BatchTableCommit;
 import org.apache.paimon.table.sink.BatchTableWrite;
@@ -124,6 +125,7 @@ import static org.apache.paimon.CoreOptions.CHANGELOG_NUM_RETAINED_MAX;
 import static org.apache.paimon.CoreOptions.CHANGELOG_NUM_RETAINED_MIN;
 import static org.apache.paimon.CoreOptions.CHANGELOG_PRODUCER;
 import static org.apache.paimon.CoreOptions.ChangelogProducer.LOOKUP;
+import static org.apache.paimon.CoreOptions.DATA_FILE_THIN_MODE;
 import static org.apache.paimon.CoreOptions.DELETION_VECTORS_ENABLED;
 import static org.apache.paimon.CoreOptions.FILE_FORMAT;
 import static org.apache.paimon.CoreOptions.FILE_FORMAT_PARQUET;
@@ -2487,6 +2489,49 @@ public class PrimaryKeySimpleTableTest extends SimpleTableTestBase {
             DataFileMeta file = table.manifestFileReader().read(manifest.fileName()).get(0).file();
             assertThat(file.fileName()).endsWith(".avro");
             assertThat(file.valueStats().minValues().getFieldCount()).isEqualTo(0);
+        }
+    }
+
+    @Test
+    public void testParquetChangelogStatsModeNoneWithThinMode() throws Exception {
+        FileStoreTable table =
+                createFileStoreTable(
+                        conf -> {
+                            conf.set(CHANGELOG_PRODUCER, LOOKUP);
+                            conf.set("num-levels", "2");
+                            conf.set(DATA_FILE_THIN_MODE, true);
+                            conf.set(CHANGELOG_FILE_FORMAT, "parquet");
+                            conf.set(CHANGELOG_FILE_STATS_MODE, "none");
+                        });
+        IOManager ioManager = IOManager.create(tablePath.toString());
+        StreamTableWrite write = table.newWrite(commitUser).withIOManager(ioManager);
+        StreamTableCommit commit = table.newCommit(commitUser);
+        write.write(rowData(1, 1, 100L));
+        write.write(rowData(1, 2, 200L));
+        commit.commit(0, write.prepareCommit(true, 0));
+
+        write.write(rowDataWithKind(RowKind.DELETE, 1, 1, 100L));
+        commit.commit(1, write.prepareCommit(true, 0));
+        write.close();
+        commit.close();
+
+        Snapshot latestSnapshot = table.newSnapshotReader().snapshotManager().latestSnapshot();
+        ManifestFileMeta manifest =
+                table.manifestListReader().read(latestSnapshot.changelogManifestList()).get(0);
+        DataFileMeta file = table.manifestFileReader().read(manifest.fileName()).get(0).file();
+        assertThat(file.fileName()).endsWith(".parquet");
+        assertStatsDisabled(file.keyStats());
+        assertStatsDisabled(file.valueStats());
+    }
+
+    private static void assertStatsDisabled(SimpleStats stats) {
+        int fieldCount = stats.minValues().getFieldCount();
+        assertThat(stats.maxValues().getFieldCount()).isEqualTo(fieldCount);
+        assertThat(stats.nullCounts().size()).isEqualTo(fieldCount);
+        for (int i = 0; i < fieldCount; i++) {
+            assertThat(stats.minValues().isNullAt(i)).isTrue();
+            assertThat(stats.maxValues().isNullAt(i)).isTrue();
+            assertThat(stats.nullCounts().isNullAt(i)).isTrue();
         }
     }
 

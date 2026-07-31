@@ -41,8 +41,8 @@ import org.apache.paimon.types.DataField;
 import org.apache.paimon.types.RowKind;
 import org.apache.paimon.types.RowType;
 import org.apache.paimon.utils.FileStorePathFactory;
-import org.apache.paimon.utils.Pair;
 import org.apache.paimon.utils.StatsCollectorFactories;
+import org.apache.paimon.utils.Triple;
 
 import javax.annotation.Nullable;
 
@@ -335,7 +335,7 @@ public class KeyValueFileWriterFactory {
         private final Function<WriteFormatKey, String> key2Compress;
         private final Function<WriteFormatKey, String> key2Stats;
 
-        private final Map<Pair<String, String>, Optional<SimpleStatsExtractor>>
+        private final Map<Triple<String, String, Boolean>, Optional<SimpleStatsExtractor>>
                 formatStats2Extractor;
         private final Map<String, SimpleColStatsCollector.Factory[]> statsMode2AvroStats;
         private final Map<String, DataFilePathFactory> format2PathFactory;
@@ -447,19 +447,24 @@ public class KeyValueFileWriterFactory {
 
             Optional<SimpleStatsExtractor> extractor =
                     formatStats2Extractor.computeIfAbsent(
-                            Pair.of(format, statsMode),
-                            k -> createSimpleStatsExtractor(format, statsMode));
+                            Triple.of(format, statsMode, key.isChangelog),
+                            k -> createSimpleStatsExtractor(key, format, statsMode));
             return SimpleStatsProducer.fromExtractor(extractor.orElse(null));
         }
 
         private Optional<SimpleStatsExtractor> createSimpleStatsExtractor(
-                String format, String statsMode) {
+                WriteFormatKey key, String format, String statsMode) {
             SimpleColStatsCollector.Factory[] statsFactories =
-                    StatsCollectorFactories.createStatsFactories(
-                            statsMode,
-                            options,
-                            writeRowType.getFieldNames(),
-                            thinModeEnabled ? keyType.getFieldNames() : Collections.emptyList());
+                    key.isChangelog
+                            ? StatsCollectorFactories.createStatsFactoriesForChangelog(
+                                    statsMode, options, writeRowType.getFieldNames())
+                            : StatsCollectorFactories.createStatsFactories(
+                                    statsMode,
+                                    options,
+                                    writeRowType.getFieldNames(),
+                                    thinModeEnabled
+                                            ? keyType.getFieldNames()
+                                            : Collections.emptyList());
             boolean isDisabled =
                     Arrays.stream(SimpleColStatsCollector.create(statsFactories))
                             .allMatch(p -> p instanceof NoneSimpleColStatsCollector);
