@@ -124,6 +124,9 @@ public class RawFileSplitRead implements SplitRead<InternalRow> {
 
     @Override
     public SplitRead<InternalRow> withReadType(RowType readRowType) {
+        if (!this.readRowType.equals(readRowType)) {
+            formatReaderMappings.clear();
+        }
         this.readRowType = readRowType;
         return this;
     }
@@ -194,10 +197,11 @@ public class RawFileSplitRead implements SplitRead<InternalRow> {
                 pathFactory.createDataFilePathFactory(partition, bucket);
         List<ReaderSupplier<InternalRow>> suppliers = new ArrayList<>();
 
+        RowType outputRowType = readRowType;
         Builder formatReaderMappingBuilder =
                 new Builder(
                         formatDiscover,
-                        readRowType.getFields(),
+                        outputRowType.getFields(),
                         schema -> {
                             if (rowTrackingEnabled) {
                                 // maybe file has no row id and sequence number, but in manifest
@@ -218,6 +222,7 @@ public class RawFileSplitRead implements SplitRead<InternalRow> {
                             dataFilePathFactory,
                             file,
                             formatReaderMappingBuilder,
+                            outputRowType,
                             dvFactories));
         }
 
@@ -229,6 +234,7 @@ public class RawFileSplitRead implements SplitRead<InternalRow> {
             DataFilePathFactory dataFilePathFactory,
             DataFileMeta file,
             Builder formatBuilder,
+            RowType outputRowType,
             @Nullable Map<String, IOExceptionSupplier<DeletionVector>> dvFactories) {
         String formatIdentifier = DataFilePathFactory.formatIdentifier(file.fileName());
         long schemaId = file.schemaId();
@@ -248,7 +254,12 @@ public class RawFileSplitRead implements SplitRead<InternalRow> {
                 dvFactories == null ? null : dvFactories.get(file.fileName());
         return () ->
                 createFileReader(
-                        partition, file, dataFilePathFactory, formatReaderMapping, dvFactory);
+                        partition,
+                        file,
+                        dataFilePathFactory,
+                        formatReaderMapping,
+                        outputRowType,
+                        dvFactory);
     }
 
     private FileRecordReader<InternalRow> createFileReader(
@@ -256,6 +267,7 @@ public class RawFileSplitRead implements SplitRead<InternalRow> {
             DataFileMeta file,
             DataFilePathFactory dataFilePathFactory,
             FormatReaderMapping formatReaderMapping,
+            RowType outputRowType,
             IOExceptionSupplier<DeletionVector> dvFactory)
             throws IOException {
         FileIndexResult fileIndexResult = null;
@@ -286,7 +298,7 @@ public class RawFileSplitRead implements SplitRead<InternalRow> {
                         fileIO, dataFilePathFactory.toPath(file), file.fileSize(), selection);
         FileRecordReader<InternalRow> fileRecordReader =
                 new DataFileRecordReader(
-                        schema.logicalRowType(),
+                        outputRowType,
                         formatReaderMapping.getReaderFactory(),
                         formatReaderContext,
                         ignoreCorruptFiles,
