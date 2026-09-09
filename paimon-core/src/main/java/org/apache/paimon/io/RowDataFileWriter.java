@@ -25,6 +25,7 @@ import org.apache.paimon.fs.Path;
 import org.apache.paimon.manifest.FileSource;
 import org.apache.paimon.stats.SimpleStats;
 import org.apache.paimon.stats.SimpleStatsConverter;
+import org.apache.paimon.table.SpecialFields;
 import org.apache.paimon.types.RowType;
 import org.apache.paimon.utils.LongCounter;
 import org.apache.paimon.utils.Pair;
@@ -52,6 +53,7 @@ public class RowDataFileWriter extends StatsCollectingSingleFileWriter<InternalR
     @Nullable private final DataFileIndexWriter dataFileIndexWriter;
     private final FileSource fileSource;
     @Nullable private final List<String> writeCols;
+    private final boolean supportsBundleRowCountUpdate;
 
     public RowDataFileWriter(
             FileIO fileIO,
@@ -76,6 +78,8 @@ public class RowDataFileWriter extends StatsCollectingSingleFileWriter<InternalR
                         fileIO, dataFileToFileIndexPath(path), writeSchema, fileIndexOptions);
         this.fileSource = fileSource;
         this.writeCols = writeCols;
+        this.supportsBundleRowCountUpdate =
+                writeSchema.getFieldIndex(SpecialFields.SEQUENCE_NUMBER.name()) == -1;
     }
 
     @Override
@@ -86,6 +90,22 @@ public class RowDataFileWriter extends StatsCollectingSingleFileWriter<InternalR
             dataFileIndexWriter.write(row);
         }
         seqNumCounter.add(1L);
+    }
+
+    @Override
+    public void writeBundle(BundleRecords bundle) throws IOException {
+        if (dataFileIndexWriter == null
+                && supportsBundleRowCountUpdate
+                && !requiresPerRecordStats()) {
+            long rowCount = bundle.rowCount();
+            super.writeBundle(bundle);
+            seqNumCounter.add(rowCount);
+            return;
+        }
+
+        for (InternalRow row : bundle) {
+            write(row);
+        }
     }
 
     @Override

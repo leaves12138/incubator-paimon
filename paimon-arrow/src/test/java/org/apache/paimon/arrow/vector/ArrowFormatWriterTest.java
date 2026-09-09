@@ -31,6 +31,8 @@ import org.apache.paimon.data.GenericMap;
 import org.apache.paimon.data.GenericRow;
 import org.apache.paimon.data.InternalRow;
 import org.apache.paimon.data.Timestamp;
+import org.apache.paimon.data.columnar.AllNullColumnVector;
+import org.apache.paimon.data.columnar.ColumnarRow;
 import org.apache.paimon.data.variant.GenericVariant;
 import org.apache.paimon.data.variant.PaimonShreddingUtils;
 import org.apache.paimon.data.variant.Variant;
@@ -141,6 +143,30 @@ public class ArrowFormatWriterTest {
                 }
             }
             vectorSchemaRoot.close();
+        }
+    }
+
+    @Test
+    public void testMissingMapColumnUsesAllNullVector() {
+        RowType inputRowType = RowType.builder().field("id", DataTypes.INT()).build();
+        RowType projectedRowType =
+                RowType.builder()
+                        .field("id", DataTypes.INT())
+                        .field("map", DataTypes.MAP(DataTypes.STRING(), DataTypes.INT()))
+                        .build();
+
+        try (ArrowFormatWriter inputWriter = new ArrowFormatWriter(inputRowType, 3, true)) {
+            inputWriter.write(GenericRow.of(1));
+            inputWriter.write(GenericRow.of(2));
+            inputWriter.write(GenericRow.of(3));
+            inputWriter.flush();
+
+            ArrowBatchReader reader = new ArrowBatchReader(projectedRowType, true);
+            ColumnarRow row =
+                    (ColumnarRow)
+                            reader.readBatch(inputWriter.getVectorSchemaRoot()).iterator().next();
+            assertThat(row.batch().columns[1]).isSameAs(AllNullColumnVector.INSTANCE);
+            assertThat(row.isNullAt(1)).isTrue();
         }
     }
 
@@ -434,6 +460,35 @@ public class ArrowFormatWriterTest {
             assertThat(allocator.closeCount()).isZero();
         } finally {
             allocator.close();
+        }
+    }
+
+    @Test
+    public void testArrowBundleSchemaCompatibilityIgnoresFieldDescription() {
+        RowType writerType = RowType.builder().field("value", DataTypes.INT()).build();
+        RowType bundleType =
+                RowType.builder().field("value", DataTypes.INT(), "different description").build();
+
+        try (ArrowFormatWriter writer = new ArrowFormatWriter(writerType, 1, true)) {
+            assertThat(
+                            writer.isArrowBundleSchemaCompatible(
+                                    new ArrowBundleRecords(
+                                            writer.getVectorSchemaRoot(), bundleType, true)))
+                    .isTrue();
+        }
+    }
+
+    @Test
+    public void testArrowBundleSchemaCompatibilityRequiresLogicalType() {
+        RowType writerType = RowType.builder().field("value", DataTypes.VARCHAR(10)).build();
+        RowType bundleType = RowType.builder().field("value", DataTypes.CHAR(10)).build();
+
+        try (ArrowFormatWriter writer = new ArrowFormatWriter(writerType, 1, true)) {
+            assertThat(
+                            writer.isArrowBundleSchemaCompatible(
+                                    new ArrowBundleRecords(
+                                            writer.getVectorSchemaRoot(), bundleType, true)))
+                    .isFalse();
         }
     }
 
