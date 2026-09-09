@@ -23,31 +23,33 @@ import org.apache.paimon.fs.FileIO;
 import org.apache.paimon.fs.MultiPartUploadStore;
 import org.apache.paimon.fs.Path;
 
-import com.aliyun.oss.model.CompleteMultipartUploadResult;
-import com.aliyun.oss.model.PartETag;
-import org.apache.hadoop.fs.FileSystem;
+import com.aliyun.sdk.service.oss2.models.CompleteMultipartUploadResult;
 
 import java.io.IOException;
 import java.util.List;
 
 /** OSS implementation of MultiPartUploadCommitter. */
 public class OSSMultiPartUploadCommitter
-        extends BaseMultiPartUploadCommitter<PartETag, CompleteMultipartUploadResult> {
-    public OSSMultiPartUploadCommitter(
+        extends BaseMultiPartUploadCommitter<OSSPartETag, CompleteMultipartUploadResult> {
+    private static final long serialVersionUID = 1L;
+    private final boolean overwrite;
+
+    OSSMultiPartUploadCommitter(
             String uploadId,
-            List<PartETag> uploadedParts,
+            List<OSSPartETag> parts,
             String objectName,
             long position,
-            Path path) {
-        super(uploadId, uploadedParts, objectName, position, path);
+            Path path,
+            boolean overwrite) {
+        super(uploadId, parts, objectName, position, path);
+        this.overwrite = overwrite;
     }
 
     @Override
-    protected MultiPartUploadStore<PartETag, CompleteMultipartUploadResult> multiPartUploadStore(
+    protected MultiPartUploadStore<OSSPartETag, CompleteMultipartUploadResult> multiPartUploadStore(
             FileIO fileIO, Path targetPath) throws IOException {
-        OSSFileIO ossFileIO = (OSSFileIO) fileIO;
-        org.apache.hadoop.fs.Path hadoopPath = ossFileIO.path(targetPath);
-        FileSystem fs = ossFileIO.getFileSystem(hadoopPath);
-        return new OSSMultiPartUpload((org.apache.hadoop.fs.aliyun.oss.AliyunOSSFileSystem) fs);
+        OSSFileIO io = (OSSFileIO) fileIO;
+        return new OSSMultiPartUpload(
+                (OSSFileSystem) io.getFileSystem(io.path(targetPath)), overwrite);
     }
 }

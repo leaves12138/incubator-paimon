@@ -69,7 +69,7 @@
                 <configuration>
                     <archive>
                         <manifestEntries>
-                            <!-- jaxb-api is packaged as an optional dependency that is only accessible on Java 11 -->
+                            <!-- Preserve optional Java 11 classes bundled by OSS SDK v2. -->
                             <Multi-Release>true</Multi-Release>
                         </manifestEntries>
                     </archive>

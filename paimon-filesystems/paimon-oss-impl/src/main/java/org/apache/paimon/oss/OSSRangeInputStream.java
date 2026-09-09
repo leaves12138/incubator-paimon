@@ -23,9 +23,8 @@ import org.apache.paimon.fs.SeekableInputStream;
 import org.apache.paimon.fs.VectoredReadUtils;
 import org.apache.paimon.fs.VectoredReadable;
 
-import com.aliyun.oss.OSSClient;
-import com.aliyun.oss.OSSException;
-import com.aliyun.oss.model.GetObjectRequest;
+import com.aliyun.sdk.service.oss2.OSSClient;
+import com.aliyun.sdk.service.oss2.models.GetObjectRequest;
 import org.apache.hadoop.fs.FileSystem;
 
 import javax.annotation.Nullable;
@@ -52,6 +51,7 @@ class OSSRangeInputStream extends SeekableInputStream implements VectoredReadabl
     private final String bucket;
     private final String key;
     private final long fileSize;
+    private final int bufferSize;
     @Nullable private final FileSystem.Statistics statistics;
     private final Set<InputStream> activeRequests = new HashSet<>();
 
@@ -67,11 +67,23 @@ class OSSRangeInputStream extends SeekableInputStream implements VectoredReadabl
             String key,
             long fileSize,
             @Nullable FileSystem.Statistics statistics) {
+        this(client, bucket, key, fileSize, statistics, BUFFER_SIZE);
+    }
+
+    OSSRangeInputStream(
+            OSSClient client,
+            String bucket,
+            String key,
+            long fileSize,
+            @Nullable FileSystem.Statistics statistics,
+            int bufferSize) {
         checkArgument(fileSize >= 0, "File size must be non-negative.");
+        checkArgument(bufferSize > 0, "Buffer size must be positive.");
         this.client = client;
         this.bucket = bucket;
         this.key = key;
         this.fileSize = fileSize;
+        this.bufferSize = bufferSize;
         this.statistics = statistics;
     }
 
@@ -120,7 +132,7 @@ class OSSRangeInputStream extends SeekableInputStream implements VectoredReadabl
         if (position >= bufferStart && position < bufferStart + bufferLength) {
             count = (int) Math.min(length, bufferStart + bufferLength - position);
             System.arraycopy(buffer, (int) (position - bufferStart), bytes, offset, count);
-        } else if (length >= BUFFER_SIZE) {
+        } else if (length >= bufferSize) {
             count = readRange(position, bytes, offset, length);
         } else {
             fillBuffer();
@@ -136,12 +148,12 @@ class OSSRangeInputStream extends SeekableInputStream implements VectoredReadabl
 
     private void fillBuffer() throws IOException {
         if (buffer == null) {
-            buffer = new byte[BUFFER_SIZE];
+            buffer = new byte[bufferSize];
         }
         bufferStart = position;
         bufferLength = 0;
         bufferLength =
-                readRange(position, buffer, 0, (int) Math.min(BUFFER_SIZE, fileSize - position));
+                readRange(position, buffer, 0, (int) Math.min(bufferSize, fileSize - position));
     }
 
     @Override
@@ -164,22 +176,24 @@ class OSSRangeInputStream extends SeekableInputStream implements VectoredReadabl
             return -1;
         }
         int count = (int) Math.min(length, fileSize - start);
-        GetObjectRequest request = new GetObjectRequest(bucket, key);
-        request.setRange(start, start + count - 1);
+        GetObjectRequest request =
+                GetObjectRequest.newBuilder()
+                        .bucket(bucket)
+                        .key(key)
+                        .range("bytes=" + start + "-" + (start + count - 1))
+                        .build();
         final InputStream input;
         try {
-            input = client.getObject(request).getObjectContent();
+            input = client.getObject(request).body();
             if (statistics != null) {
                 statistics.incrementReadOps(1);
             }
-        } catch (OSSException e) {
-            if ("NoSuchKey".equals(e.getErrorCode())) {
+        } catch (RuntimeException e) {
+            if (OSSFileSystem.missing(e)) {
                 FileNotFoundException missing = new FileNotFoundException(key);
                 missing.initCause(e);
                 throw missing;
             }
-            throw new IOException("Failed to open OSS range for " + key, e);
-        } catch (RuntimeException e) {
             throw new IOException("Failed to open OSS range for " + key, e);
         }
         synchronized (activeRequests) {

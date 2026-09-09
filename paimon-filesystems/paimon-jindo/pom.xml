@@ -32,7 +32,6 @@
     <packaging>jar</packaging>
 
     <properties>
-        <fs.oss.sdk.version>3.17.4</fs.oss.sdk.version>
         <jindodata.version>6.9.1</jindodata.version>
     </properties>
 
@@ -55,22 +54,6 @@
             <groupId>org.apache.paimon</groupId>
             <artifactId>paimon-oss-impl</artifactId>
             <version>${project.version}</version>
-        </dependency>
-
-        <dependency>
-            <groupId>com.aliyun.oss</groupId>
-            <artifactId>aliyun-sdk-oss</artifactId>
-            <version>${fs.oss.sdk.version}</version>
-            <exclusions>
-                <exclusion>
-                    <groupId>org.jacoco</groupId>
-                    <artifactId>org.jacoco.agent</artifactId>
-                </exclusion>
-                <exclusion>
-                    <groupId>javax.xml.bind</groupId>
-                    <artifactId>jaxb-api</artifactId>
-                </exclusion>
-            </exclusions>
         </dependency>
 
         <dependency>
@@ -175,7 +158,6 @@
                     <artifactSet>
                         <includes combine.children="append">
                             <include>org.apache.paimon:paimon-oss-impl</include>
-                            <include>com.aliyun.oss:aliyun-sdk-oss</include>
                             <include>com.aliyun:*</include>
                             <include>com.google.code.gson:gson</include>
                             <include>commons-codec:commons-codec</include>

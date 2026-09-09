@@ -22,29 +22,20 @@ import org.apache.paimon.catalog.CatalogContext;
 import org.apache.paimon.data.BlobDescriptor;
 import org.apache.paimon.fs.Path;
 import org.apache.paimon.options.Options;
+import org.apache.paimon.oss.OSSFileIO;
 
-import com.aliyun.oss.HttpMethod;
-import com.aliyun.oss.OSSClient;
-import com.aliyun.oss.model.ObjectMetadata;
 import org.junit.jupiter.api.Test;
 
-import java.net.URI;
-import java.net.URL;
-import java.security.MessageDigest;
 import java.time.Duration;
 
+import static org.apache.paimon.options.CatalogOptions.FILE_IO_ALLOW_CACHE;
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.contains;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-/** Tests for {@link JindoFileIO}. */
+/** Tests for Jindo configuration and its shared OSS-v2 Blob URL implementation. */
 public class JindoFileIOTest {
-
     private static final String SHOW_DIR_TIMESTAMP = "fs.oss.show-dir-timestamp";
 
     @Test
@@ -72,61 +63,44 @@ public class JindoFileIOTest {
     }
 
     @Test
-    public void testCreateBlobClientUsesConfiguredSts() {
+    public void testBlobDelegateUsesConfiguredStsAndOwnsItsClients() throws Exception {
         Options options = new Options();
         options.set("fs.oss.endpoint", "oss.example.com");
         options.set("fs.oss.region", "cn-hangzhou");
-        options.set("fs.oss.accessKeyId", "access-key");
-        options.set("fs.oss.accessKeySecret", "access-secret");
-        options.set("fs.oss.securityToken", "security-token");
-
-        OSSClient client = JindoFileIO.createBlobClient(options);
-        try {
-            assertThat(client.getEndpoint()).isEqualTo(URI.create("https://oss.example.com"));
-            assertThat(client.getObjectOperation().getRegion()).isEqualTo("cn-hangzhou");
-            assertThat(client.getCredentialsProvider().getCredentials().getAccessKeyId())
-                    .isEqualTo("access-key");
-            assertThat(client.getCredentialsProvider().getCredentials().getSecretAccessKey())
-                    .isEqualTo("access-secret");
-            assertThat(client.getCredentialsProvider().getCredentials().getSecurityToken())
-                    .isEqualTo("security-token");
-        } finally {
-            client.shutdown();
+        options.set("fs.oss.accessKeyId", "test-key");
+        options.set("fs.oss.accessKeySecret", "test-secret");
+        options.set("fs.oss.securityToken", "test-token");
+        JindoFileIO configured = new JindoFileIO();
+        configured.configure(CatalogContext.create(options));
+        try (OSSFileIO delegate =
+                JindoFileIO.createBlobFileIO(
+                        configured.hadoopOptions(new Path("oss://bucket/table"), "meta"))) {
+            assertThat(delegate.hadoopOptions().get("fs.oss.securityToken"))
+                    .isEqualTo("test-token");
+            assertThat(delegate.hadoopOptions().get("fs.oss.region")).isEqualTo("cn-hangzhou");
+            assertThat(delegate.hadoopOptions().containsKey("fs.oss.credentials.provider"))
+                    .isFalse();
+            // An empty known-length stream constructs the real client without making a request.
+            try (org.apache.paimon.fs.SeekableInputStream in =
+                    delegate.newInputStream(new Path("oss://bucket/table/file"), 0)) {
+                assertThat(in.read()).isEqualTo(-1);
+            }
         }
+        assertThat(options.containsKey(FILE_IO_ALLOW_CACHE.key())).isFalse();
     }
 
     @Test
-    public void testCreateBlobPresignedUrlUsesOssClient() throws Exception {
-        OSSClient client = mock(OSSClient.class);
-        Path tableRoot = new Path("oss://bucket/table");
+    public void testCreateBlobPresignedUrlDelegatesAndCloses() throws Exception {
+        OSSFileIO delegate = mock(OSSFileIO.class);
+        Path root = new Path("oss://bucket/table");
         BlobDescriptor descriptor = new BlobDescriptor("oss://bucket/table/data/file", 10, 20);
-        ObjectMetadata metadata = new ObjectMetadata();
-        metadata.setContentLength(20);
-        metadata.setContentType("application/octet-stream");
-        metadata.addUserMetadata(
-                "paimon-blob-descriptor-sha256", sha256Hex(descriptor.serialize()));
-        when(client.headObject(eq("bucket"), contains("_bloburl_"))).thenReturn(metadata);
-        when(client.getEndpoint()).thenReturn(URI.create("https://oss.example.com"));
-        when(client.generatePresignedUrl(eq("bucket"), anyString(), any(), eq(HttpMethod.GET)))
-                .thenAnswer(
-                        invocation ->
-                                new URL(
-                                        "https://bucket.oss.example.com/"
-                                                + invocation.getArgument(1)));
-
-        JindoFileIO fileIO = new JindoFileIO(client);
-        assertThat(fileIO.createBlobPresignedUrl(tableRoot, descriptor, Duration.ofHours(1)))
-                .startsWith("https://bucket.oss.example.com/table/data/_bloburl_");
-
+        Duration validity = Duration.ofHours(1);
+        when(delegate.createBlobPresignedUrl(root, descriptor, validity))
+                .thenReturn("https://bucket.oss.example.com/materialized");
+        JindoFileIO fileIO = new JindoFileIO(delegate);
+        assertThat(fileIO.createBlobPresignedUrl(root, descriptor, validity))
+                .isEqualTo("https://bucket.oss.example.com/materialized");
         fileIO.close();
-        verify(client).shutdown();
-    }
-
-    private static String sha256Hex(byte[] bytes) throws Exception {
-        StringBuilder result = new StringBuilder();
-        for (byte value : MessageDigest.getInstance("SHA-256").digest(bytes)) {
-            result.append(String.format("%02x", value & 0xff));
-        }
-        return result.toString();
+        verify(delegate).close();
     }
 }

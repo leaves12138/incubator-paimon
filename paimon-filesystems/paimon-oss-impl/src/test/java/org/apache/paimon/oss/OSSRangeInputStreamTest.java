@@ -22,10 +22,10 @@ import org.apache.paimon.fs.FileRange;
 import org.apache.paimon.fs.Path;
 import org.apache.paimon.fs.SeekableInputStream;
 
-import com.aliyun.oss.OSSClient;
-import com.aliyun.oss.OSSException;
-import com.aliyun.oss.model.GetObjectRequest;
-import com.aliyun.oss.model.OSSObject;
+import com.aliyun.sdk.service.oss2.OSSClient;
+import com.aliyun.sdk.service.oss2.exceptions.ServiceException;
+import com.aliyun.sdk.service.oss2.models.GetObjectRequest;
+import com.aliyun.sdk.service.oss2.models.GetObjectResult;
 import org.apache.hadoop.fs.FileSystem;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -104,7 +104,8 @@ class OSSRangeInputStreamTest {
         }
         ArgumentCaptor<GetObjectRequest> request = ArgumentCaptor.forClass(GetObjectRequest.class);
         verify(client).getObject(request.capture());
-        assertThat(request.getValue().getRange()).containsExactly(data.length - 3, data.length - 1);
+        assertThat(request.getValue().range())
+                .isEqualTo("bytes=" + (data.length - 3) + "-" + (data.length - 1));
         assertThat(closed.get()).isEqualTo(1);
     }
 
@@ -112,10 +113,14 @@ class OSSRangeInputStreamTest {
     void testBufferAndRetryAfterTruncatedRead() throws Exception {
         byte[] data = data(100_000);
         OSSClient client = client(data, new AtomicInteger());
-        OSSObject shortObject = new OSSObject();
-        shortObject.setObjectContent(new ByteArrayInputStream(new byte[3]));
-        OSSObject fullObject = new OSSObject();
-        fullObject.setObjectContent(new ByteArrayInputStream(Arrays.copyOf(data, 64 * 1024)));
+        GetObjectResult shortObject =
+                GetObjectResult.newBuilder()
+                        .innerBody(new ByteArrayInputStream(new byte[3]))
+                        .build();
+        GetObjectResult fullObject =
+                GetObjectResult.newBuilder()
+                        .innerBody(new ByteArrayInputStream(Arrays.copyOf(data, 64 * 1024)))
+                        .build();
         when(client.getObject(any(GetObjectRequest.class))).thenReturn(shortObject, fullObject);
         try (OSSRangeInputStream in =
                 new OSSRangeInputStream(client, "bucket", "key", data.length, null)) {
@@ -176,8 +181,10 @@ class OSSRangeInputStreamTest {
         OSSClient client = mock(OSSClient.class);
         when(client.getObject(any(GetObjectRequest.class)))
                 .thenThrow(
-                        new OSSException(
-                                "missing", "NoSuchKey", "request", "host", null, null, "GET"));
+                        ServiceException.newBuilder()
+                                .statusCode(404)
+                                .errorFields(Collections.singletonMap("Code", "NoSuchKey"))
+                                .build());
         try (OSSRangeInputStream in = new OSSRangeInputStream(client, "bucket", "key", 10, null)) {
             assertThatThrownBy(in::read).isInstanceOf(FileNotFoundException.class);
         }
@@ -187,8 +194,8 @@ class OSSRangeInputStreamTest {
     void testCloseReleasesAnActiveRequest() throws Exception {
         CountDownLatch reading = new CountDownLatch(1);
         CountDownLatch closed = new CountDownLatch(1);
-        OSSObject object = new OSSObject();
-        object.setObjectContent(
+        GetObjectResult.Builder object = GetObjectResult.newBuilder();
+        object.innerBody(
                 new InputStream() {
                     @Override
                     public int read() throws IOException {
@@ -210,7 +217,7 @@ class OSSRangeInputStreamTest {
                     }
                 });
         OSSClient client = mock(OSSClient.class);
-        when(client.getObject(any(GetObjectRequest.class))).thenReturn(object);
+        when(client.getObject(any(GetObjectRequest.class))).thenReturn(object.build());
         OSSRangeInputStream in = new OSSRangeInputStream(client, "bucket", "key", 10, null);
         ExecutorService executor = Executors.newSingleThreadExecutor();
         try {
@@ -251,8 +258,8 @@ class OSSRangeInputStreamTest {
         when(client.getObject(any(GetObjectRequest.class)))
                 .thenAnswer(
                         invocation -> {
-                            OSSObject object = new OSSObject();
-                            object.setObjectContent(
+                            GetObjectResult.Builder object = GetObjectResult.newBuilder();
+                            object.innerBody(
                                     new InputStream() {
                                         private final AtomicBoolean attempted = new AtomicBoolean();
 
@@ -279,7 +286,7 @@ class OSSRangeInputStreamTest {
                                             }
                                         }
                                     });
-                            return object;
+                            return object.build();
                         });
         OSSRangeInputStream in = new OSSRangeInputStream(client, "bucket", "key", 10, null);
         ExecutorService executor = Executors.newFixedThreadPool(3);
@@ -345,19 +352,23 @@ class OSSRangeInputStreamTest {
         when(client.getObject(any(GetObjectRequest.class)))
                 .thenAnswer(
                         invocation -> {
-                            long[] range =
-                                    ((GetObjectRequest) invocation.getArgument(0)).getRange();
+                            String[] bounds =
+                                    ((GetObjectRequest) invocation.getArgument(0))
+                                            .range()
+                                            .substring("bytes=".length())
+                                            .split("-");
+                            long[] range = {Long.parseLong(bounds[0]), Long.parseLong(bounds[1])};
                             byte[] bytes =
                                     Arrays.copyOfRange(data, (int) range[0], (int) range[1] + 1);
-                            OSSObject object = new OSSObject();
-                            object.setObjectContent(
+                            GetObjectResult.Builder object = GetObjectResult.newBuilder();
+                            object.innerBody(
                                     new ByteArrayInputStream(bytes) {
                                         @Override
                                         public void close() {
                                             closed.incrementAndGet();
                                         }
                                     });
-                            return object;
+                            return object.build();
                         });
         return client;
     }

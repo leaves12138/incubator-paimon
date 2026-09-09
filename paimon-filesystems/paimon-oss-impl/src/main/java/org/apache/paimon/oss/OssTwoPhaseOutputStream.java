@@ -22,26 +22,28 @@ import org.apache.paimon.fs.MultiPartUploadStore;
 import org.apache.paimon.fs.MultiPartUploadTwoPhaseOutputStream;
 import org.apache.paimon.fs.Path;
 
-import com.aliyun.oss.model.CompleteMultipartUploadResult;
-import com.aliyun.oss.model.PartETag;
+import com.aliyun.sdk.service.oss2.models.CompleteMultipartUploadResult;
 
 import java.io.IOException;
 
-/** OSS implementation of TwoPhaseOutputStream using multipart upload. */
+/** OSS two-phase output; parts remain invisible until the committer completes the upload. */
 public class OssTwoPhaseOutputStream
-        extends MultiPartUploadTwoPhaseOutputStream<PartETag, CompleteMultipartUploadResult> {
+        extends MultiPartUploadTwoPhaseOutputStream<OSSPartETag, CompleteMultipartUploadResult> {
+    private final boolean overwrite;
 
-    public OssTwoPhaseOutputStream(
-            MultiPartUploadStore<PartETag, CompleteMultipartUploadResult> multiPartUploadStore,
-            org.apache.hadoop.fs.Path hadoopPath,
-            Path targetPath)
+    OssTwoPhaseOutputStream(
+            MultiPartUploadStore<OSSPartETag, CompleteMultipartUploadResult> store,
+            org.apache.hadoop.fs.Path path,
+            Path target,
+            boolean overwrite)
             throws IOException {
-        super(multiPartUploadStore, hadoopPath, targetPath);
+        super(store, path, target);
+        this.overwrite = overwrite;
     }
 
     @Override
     public Committer committer() {
         return new OSSMultiPartUploadCommitter(
-                uploadId, uploadedParts, objectName, position, targetPath);
+                uploadId, uploadedParts, objectName, position, targetPath, overwrite);
     }
 }

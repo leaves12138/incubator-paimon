@@ -20,81 +20,45 @@
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
-
     <parent>
         <artifactId>paimon-filesystems</artifactId>
         <groupId>org.apache.paimon</groupId>
         <version>2.1-SNAPSHOT</version>
     </parent>
-
     <artifactId>paimon-oss-impl</artifactId>
     <name>Paimon : FileSystems : OSS : Impl</name>
     <packaging>jar</packaging>
-
     <properties>
-        <fs.oss.sdk.version>3.17.4</fs.oss.sdk.version>
+        <fs.oss.sdk.version>0.6.0</fs.oss.sdk.version>
     </properties>
-
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>com.fasterxml.jackson</groupId>
+                <artifactId>jackson-bom</artifactId>
+                <version>2.18.1</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
     <dependencies>
+        <dependency>
+            <groupId>com.aliyun</groupId>
+            <artifactId>alibabacloud-oss-v2</artifactId>
+            <version>${fs.oss.sdk.version}</version>
+        </dependency>
         <dependency>
             <groupId>org.apache.paimon</groupId>
             <artifactId>paimon-hadoop-shaded</artifactId>
             <version>${project.version}</version>
         </dependency>
-
         <dependency>
             <groupId>org.apache.paimon</groupId>
             <artifactId>paimon-common</artifactId>
             <version>${project.version}</version>
             <scope>provided</scope>
         </dependency>
-
-        <dependency>
-            <groupId>org.apache.hadoop</groupId>
-            <artifactId>hadoop-aliyun</artifactId>
-            <version>${fs.hadoopshaded.version}</version>
-            <exclusions>
-                <exclusion>
-                    <groupId>com.aliyun.oss</groupId>
-                    <artifactId>aliyun-oss-sdk</artifactId>
-                </exclusion>
-                <exclusion>
-                    <!-- provided by paimon-hadoop-shaded -->
-                    <groupId>org.apache.hadoop</groupId>
-                    <artifactId>hadoop-common</artifactId>
-                </exclusion>
-                <exclusion>
-                    <groupId>ch.qos.reload4j</groupId>
-                    <artifactId>reload4j</artifactId>
-                </exclusion>
-                <exclusion>
-                    <groupId>org.slf4j</groupId>
-                    <artifactId>slf4j-reload4j</artifactId>
-                </exclusion>
-            </exclusions>
-        </dependency>
-
-        <dependency>
-            <groupId>com.aliyun.oss</groupId>
-            <artifactId>aliyun-sdk-oss</artifactId>
-            <version>${fs.oss.sdk.version}</version>
-            <exclusions>
-                <exclusion>
-                    <groupId>javax.xml.bind</groupId>
-                    <artifactId>jaxb-api</artifactId>
-                </exclusion>
-            </exclusions>
-        </dependency>
-
-        <dependency>
-            <!-- Hadoop requires jaxb-api for javax.xml.bind.JAXBException -->
-            <groupId>javax.xml.bind</groupId>
-            <artifactId>jaxb-api</artifactId>
-            <version>${jaxb.api.version}</version>
-            <!-- packaged as an optional dependency that is only accessible on Java 11+ -->
-            <scope>provided</scope>
-        </dependency>
-
         <dependency>
             <groupId>org.mockito</groupId>
             <artifactId>mockito-core</artifactId>
@@ -102,80 +66,8 @@
             <scope>test</scope>
         </dependency>
     </dependencies>
-
     <build>
         <plugins>
-
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-jar-plugin</artifactId>
-                <configuration>
-                    <archive>
-                        <manifestEntries>
-                            <!-- jaxb-api is packaged as an optional dependency that is only accessible on Java 11 -->
-                            <Multi-Release>true</Multi-Release>
-                        </manifestEntries>
-                    </archive>
-                </configuration>
-            </plugin>
-
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-dependency-plugin</artifactId>
-                <executions>
-                    <execution>
-                        <id>copy-javax-jars</id>
-                        <phase>process-resources</phase>
-                        <goals>
-                            <goal>copy</goal>
-                        </goals>
-                    </execution>
-                </executions>
-                <configuration>
-                    <artifactItems>
-                        <artifactItem>
-                            <groupId>javax.xml.bind</groupId>
-                            <artifactId>jaxb-api</artifactId>
-                            <version>${jaxb.api.version}</version>
-                            <type>jar</type>
-                            <overWrite>true</overWrite>
-                        </artifactItem>
-                    </artifactItems>
-                    <outputDirectory>${project.build.directory}/temporary</outputDirectory>
-                </configuration>
-            </plugin>
-
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-antrun-plugin</artifactId>
-                <executions>
-                    <execution>
-                        <id>unpack-javax-libraries</id>
-                        <phase>process-resources</phase>
-                        <goals>
-                            <goal>run</goal>
-                        </goals>
-                        <configuration>
-                            <target>
-                                <echo message="unpacking javax jars"/>
-                                <unzip dest="${project.build.directory}/classes/META-INF/versions/11">
-                                    <fileset dir="${project.build.directory}/temporary">
-                                        <include name="*"/>
-                                    </fileset>
-                                    <patternset>
-                                        <!-- exclude the jar's own META-INF, otherwise multi-release
-                                             metadata gets nested under META-INF/versions/11 and tools
-                                             like JaCoCo fail on duplicate class names -->
-                                        <exclude name="META-INF/**"/>
-                                    </patternset>
-                                </unzip>
-                            </target>
-                        </configuration>
-                    </execution>
-                </executions>
-            </plugin>
-
-            <!-- Relocate all OSS related classes -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-shade-plugin</artifactId>
@@ -183,16 +75,18 @@
                     <execution>
                         <id>shade-paimon</id>
                         <phase>package</phase>
-                        <goals>
-                            <goal>shade</goal>
-                        </goals>
+                        <goals><goal>shade</goal></goals>
                         <configuration>
-                            <artifactSet>
-                                <includes>
-                                    <include>*:*</include>
-                                </includes>
-                            </artifactSet>
+                            <artifactSet><includes><include>*:*</include></includes></artifactSet>
                             <filters>
+                                <filter>
+                                    <artifact>org.apache.paimon:paimon-hadoop-shaded</artifact>
+                                    <excludes>
+                                        <exclude>com/fasterxml/jackson/**</exclude>
+                                        <exclude>com/ctc/wstx/**</exclude>
+                                        <exclude>org/codehaus/stax2/**</exclude>
+                                    </excludes>
+                                </filter>
                                 <filter>
                                     <artifact>*</artifact>
                                     <excludes>
@@ -210,5 +104,4 @@
             </plugin>
         </plugins>
     </build>
-
 </project>

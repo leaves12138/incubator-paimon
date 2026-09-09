@@ -22,45 +22,34 @@ import org.apache.paimon.data.BlobDescriptor;
 import org.apache.paimon.fs.Path;
 import org.apache.paimon.utils.BlobDescriptorUtils;
 
-import com.aliyun.oss.HttpMethod;
-import com.aliyun.oss.OSSClient;
-import com.aliyun.oss.OSSException;
-import com.aliyun.oss.model.AbortMultipartUploadRequest;
-import com.aliyun.oss.model.CompleteMultipartUploadRequest;
-import com.aliyun.oss.model.InitiateMultipartUploadRequest;
-import com.aliyun.oss.model.InitiateMultipartUploadResult;
-import com.aliyun.oss.model.ObjectMetadata;
-import com.aliyun.oss.model.PartETag;
-import com.aliyun.oss.model.UploadPartCopyRequest;
-import com.aliyun.oss.model.UploadPartCopyResult;
+import com.aliyun.sdk.service.oss2.OSSClient;
+import com.aliyun.sdk.service.oss2.PresignOptions;
+import com.aliyun.sdk.service.oss2.models.GetObjectRequest;
+import com.aliyun.sdk.service.oss2.models.HeadObjectRequest;
+import com.aliyun.sdk.service.oss2.models.HeadObjectResult;
+import com.aliyun.sdk.service.oss2.models.PutObjectRequest;
+import com.aliyun.sdk.service.oss2.transport.BinaryData;
 
-import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URL;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
-import java.time.Instant;
-import java.util.ArrayList;
-import java.util.Date;
-import java.util.List;
-import java.util.Locale;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
 
-/** Materializes blob ranges and creates OSS presigned URLs. */
+/** Materializes blob ranges and creates OSS presigned URLs using SDK v2. */
 public final class OSSBlobPresigner {
-
     private static final String BLOB_FINGERPRINT_METADATA = "paimon-blob-descriptor-sha256";
     private static final String BLOB_CONTENT_TYPE = "application/octet-stream";
-    private static final String OSS_INTERNAL_ENDPOINT_SUFFIX = "-internal.aliyuncs.com";
-    private static final long BLOB_COPY_MIN_PART_SIZE = 100L * 1024 * 1024;
-    private static final long MAX_MULTIPART_UPLOAD_PARTS = 10_000;
     private static final char[] HEX_CHARS = "0123456789abcdef".toCharArray();
 
     private OSSBlobPresigner() {}
 
-    public static String create(
-            OSSClient client, Path tableRoot, BlobDescriptor descriptor, Duration validity)
+    static String create(
+            OSSFileSystem fs, Path tableRoot, BlobDescriptor descriptor, Duration validity)
             throws IOException {
         BlobDescriptorUtils.validateTableRoot(tableRoot, descriptor);
         if (validity == null
@@ -69,8 +58,12 @@ public final class OSSBlobPresigner {
                 || validity.getNano() != 0) {
             throw new IOException("Blob presigned URL validity must be positive whole seconds.");
         }
-
+        URI endpoint = fs.publicEndpoint();
+        if (!"https".equalsIgnoreCase(endpoint.getScheme())) {
+            throw new IOException("Blob presigned URLs require an HTTPS endpoint.");
+        }
         try {
+            OSSClient client = fs.client();
             URI source = new Path(descriptor.uri()).toUri();
             String bucket = source.getAuthority();
             String sourceKey = objectKey(source);
@@ -78,26 +71,71 @@ public final class OSSBlobPresigner {
             int parentEnd = sourceKey.lastIndexOf('/') + 1;
             String targetKey = sourceKey.substring(0, parentEnd) + "_bloburl_" + fingerprint;
 
-            ObjectMetadata target = headObjectIfExists(client, bucket, targetKey);
+            HeadObjectResult target = headObjectIfExists(client, bucket, targetKey);
             if (!matches(target, descriptor.length(), fingerprint)) {
-                ObjectMetadata sourceMetadata = client.headObject(bucket, sourceKey);
-                validateRange(descriptor, sourceMetadata.getContentLength());
-                materialize(client, bucket, sourceKey, targetKey, descriptor, fingerprint);
-                target = client.headObject(bucket, targetKey);
+                HeadObjectResult metadata =
+                        client.headObject(
+                                HeadObjectRequest.newBuilder()
+                                        .bucket(bucket)
+                                        .key(sourceKey)
+                                        .build());
+                validateRange(descriptor, metadata.contentLength());
+                Map<String, String> headers = new HashMap<>(fs.writeHeaders());
+                headers.put("Content-Type", BLOB_CONTENT_TYPE);
+                Map<String, String> fingerprintMetadata =
+                        Collections.singletonMap(BLOB_FINGERPRINT_METADATA, fingerprint);
+                if (descriptor.length() == 0) {
+                    client.putObject(
+                            PutObjectRequest.newBuilder()
+                                    .bucket(bucket)
+                                    .key(targetKey)
+                                    .headers(headers)
+                                    .metadata(fingerprintMetadata)
+                                    .body(BinaryData.fromBytes(new byte[0]))
+                                    .build());
+                } else {
+                    OSSMultiPartUpload.copyRange(
+                            client,
+                            bucket,
+                            sourceKey,
+                            targetKey,
+                            descriptor.offset(),
+                            descriptor.length(),
+                            headers,
+                            fingerprintMetadata);
+                }
+                target =
+                        client.headObject(
+                                HeadObjectRequest.newBuilder()
+                                        .bucket(bucket)
+                                        .key(targetKey)
+                                        .build());
                 if (!matches(target, descriptor.length(), fingerprint)) {
                     throw new IOException(
                             "Materialized blob object metadata does not match descriptor.");
                 }
             }
 
+            // Sign the public endpoint itself; rewriting the host after V4 signing is invalid.
             URL url =
-                    client.generatePresignedUrl(
-                            bucket,
-                            targetKey,
-                            Date.from(Instant.now().plus(validity)),
-                            HttpMethod.GET);
-            url = usePublicEndpoint(url);
-            validatePresignedUrl(client, url, bucket, targetKey);
+                    new URL(
+                            fs.publicClient()
+                                    .presign(
+                                            GetObjectRequest.newBuilder()
+                                                    .bucket(bucket)
+                                                    .key(targetKey)
+                                                    .build(),
+                                            PresignOptions.newBuilder()
+                                                    .expiration(validity)
+                                                    .build())
+                                    .url());
+            String expectedHost = bucket + "." + endpoint.getHost();
+            if (!"https".equalsIgnoreCase(url.getProtocol())
+                    || !expectedHost.equalsIgnoreCase(url.getHost())
+                    || !("/" + targetKey).equals(url.toURI().getPath())) {
+                throw new IOException(
+                        "OSS client generated a presigned URL for an invalid target.");
+            }
             return url.toString();
         } catch (IOException e) {
             throw e;
@@ -106,85 +144,25 @@ public final class OSSBlobPresigner {
         }
     }
 
-    private static void materialize(
-            OSSClient client,
-            String bucket,
-            String sourceKey,
-            String targetKey,
-            BlobDescriptor descriptor,
-            String fingerprint)
-            throws Exception {
-        ObjectMetadata metadata = new ObjectMetadata();
-        metadata.setContentType(BLOB_CONTENT_TYPE);
-        metadata.addUserMetadata(BLOB_FINGERPRINT_METADATA, fingerprint);
-        if (descriptor.length() == 0) {
-            metadata.setContentLength(0);
-            client.putObject(bucket, targetKey, new ByteArrayInputStream(new byte[0]), metadata);
-            return;
-        }
-
-        String uploadId = null;
+    private static HeadObjectResult headObjectIfExists(
+            OSSClient client, String bucket, String key) {
         try {
-            InitiateMultipartUploadResult initiated =
-                    client.initiateMultipartUpload(
-                            new InitiateMultipartUploadRequest(bucket, targetKey, metadata));
-            uploadId = initiated.getUploadId();
-            long partSize =
-                    Math.max(
-                            BLOB_COPY_MIN_PART_SIZE,
-                            descriptor.length() / MAX_MULTIPART_UPLOAD_PARTS + 1);
-            List<PartETag> parts = new ArrayList<>();
-            long copied = 0;
-            int partNumber = 1;
-            while (copied < descriptor.length()) {
-                long size = Math.min(partSize, descriptor.length() - copied);
-                UploadPartCopyResult result =
-                        client.uploadPartCopy(
-                                new UploadPartCopyRequest(
-                                        bucket,
-                                        sourceKey,
-                                        bucket,
-                                        targetKey,
-                                        uploadId,
-                                        partNumber,
-                                        descriptor.offset() + copied,
-                                        size));
-                parts.add(new PartETag(partNumber, result.getETag()));
-                copied += size;
-                partNumber++;
-            }
-            client.completeMultipartUpload(
-                    new CompleteMultipartUploadRequest(bucket, targetKey, uploadId, parts));
-            uploadId = null;
-        } catch (Exception e) {
-            if (uploadId != null) {
-                try {
-                    client.abortMultipartUpload(
-                            new AbortMultipartUploadRequest(bucket, targetKey, uploadId));
-                } catch (Exception abortException) {
-                    e.addSuppressed(abortException);
-                }
-            }
-            throw e;
-        }
-    }
-
-    private static ObjectMetadata headObjectIfExists(OSSClient client, String bucket, String key) {
-        try {
-            return client.headObject(bucket, key);
-        } catch (OSSException e) {
-            if ("NoSuchKey".equals(e.getErrorCode()) || "NoSuchObject".equals(e.getErrorCode())) {
+            return client.headObject(
+                    HeadObjectRequest.newBuilder().bucket(bucket).key(key).build());
+        } catch (RuntimeException e) {
+            if (OSSFileSystem.missing(e)) {
                 return null;
             }
             throw e;
         }
     }
 
-    private static boolean matches(ObjectMetadata metadata, long length, String fingerprint) {
+    private static boolean matches(HeadObjectResult metadata, long length, String fingerprint) {
         return metadata != null
-                && metadata.getContentLength() == length
-                && BLOB_CONTENT_TYPE.equals(metadata.getContentType())
-                && fingerprint.equals(metadata.getUserMetadata().get(BLOB_FINGERPRINT_METADATA));
+                && metadata.contentLength() != null
+                && metadata.contentLength() == length
+                && BLOB_CONTENT_TYPE.equals(metadata.contentType())
+                && fingerprint.equals(metadata.metadata().get(BLOB_FINGERPRINT_METADATA));
     }
 
     private static void validateRange(BlobDescriptor descriptor, long sourceLength)
@@ -217,37 +195,5 @@ public final class OSSBlobPresigner {
         } catch (NoSuchAlgorithmException e) {
             throw new RuntimeException("SHA-256 not available.", e);
         }
-    }
-
-    private static void validatePresignedUrl(
-            OSSClient client, URL url, String bucket, String targetKey) throws Exception {
-        URI endpoint = client.getEndpoint();
-        String expectedHost = publicEndpointHost(bucket + "." + endpoint.getHost());
-        if (!"https".equalsIgnoreCase(endpoint.getScheme())
-                || !"https".equalsIgnoreCase(url.getProtocol())
-                || !expectedHost.equalsIgnoreCase(url.getHost())
-                || !("/" + targetKey).equals(url.toURI().getPath())) {
-            throw new IOException("OSS client generated a presigned URL for an invalid target.");
-        }
-    }
-
-    private static URL usePublicEndpoint(URL url) throws IOException {
-        String publicHost = publicEndpointHost(url.getHost());
-        if (publicHost.equals(url.getHost())) {
-            return url;
-        }
-        String file = url.getFile();
-        if (url.getRef() != null) {
-            file += "#" + url.getRef();
-        }
-        return new URL(url.getProtocol(), publicHost, url.getPort(), file);
-    }
-
-    private static String publicEndpointHost(String host) {
-        if (!host.toLowerCase(Locale.ROOT).endsWith(OSS_INTERNAL_ENDPOINT_SUFFIX)) {
-            return host;
-        }
-        return host.substring(0, host.length() - OSS_INTERNAL_ENDPOINT_SUFFIX.length())
-                + ".aliyuncs.com";
     }
 }

@@ -25,7 +25,7 @@ import org.apache.paimon.fs.HadoopOptionsProvider;
 import org.apache.paimon.fs.Path;
 import org.apache.paimon.fs.TwoPhaseOutputStream;
 import org.apache.paimon.options.Options;
-import org.apache.paimon.oss.OSSBlobPresigner;
+import org.apache.paimon.oss.OSSFileIO;
 import org.apache.paimon.utils.IOUtils;
 import org.apache.paimon.utils.Pair;
 import org.apache.paimon.utils.SensitiveConfigUtils;
@@ -35,8 +35,6 @@ import com.aliyun.jindodata.common.JindoHadoopSystem;
 import com.aliyun.jindodata.dls.JindoDlsFileSystem;
 import com.aliyun.jindodata.oss.JindoOssFileSystem;
 import com.aliyun.jindodata.oss.auth.SimpleCredentialsProvider;
-import com.aliyun.oss.OSSClient;
-import com.aliyun.oss.OSSClientBuilder;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.slf4j.Logger;
@@ -98,12 +96,12 @@ public class JindoFileIO extends HadoopCompliantFileIO implements HadoopOptionsP
     private Options hadoopOptions;
     private Options hadoopOptionsWithCache;
     private boolean allowCache = true;
-    private transient OSSClient blobClient;
+    private transient OSSFileIO blobFileIO;
 
     public JindoFileIO() {}
 
-    JindoFileIO(OSSClient blobClient) {
-        this.blobClient = blobClient;
+    JindoFileIO(OSSFileIO blobFileIO) {
+        this.blobFileIO = blobFileIO;
     }
 
     @Override
@@ -221,40 +219,25 @@ public class JindoFileIO extends HadoopCompliantFileIO implements HadoopOptionsP
     @Override
     public String createBlobPresignedUrl(
             Path tableRoot, BlobDescriptor descriptor, Duration validity) throws IOException {
-        return OSSBlobPresigner.create(blobClient(), tableRoot, descriptor, validity);
+        return blobFileIO().createBlobPresignedUrl(tableRoot, descriptor, validity);
     }
 
-    private synchronized OSSClient blobClient() {
-        if (blobClient == null) {
-            blobClient = createBlobClient(hadoopOptions);
+    private synchronized OSSFileIO blobFileIO() {
+        if (blobFileIO == null) {
+            blobFileIO = createBlobFileIO(hadoopOptions);
         }
-        return blobClient;
+        return blobFileIO;
     }
 
-    static OSSClient createBlobClient(Options options) {
-        String endpoint = options.get(OSS_ENDPOINT);
-        if (!endpoint.contains("://")) {
-            endpoint = "https://" + endpoint;
-        }
-        String securityToken = options.get(OSS_SECURITY_TOKEN);
-        OSSClientBuilder builder = new OSSClientBuilder();
-        OSSClient client =
-                (OSSClient)
-                        (StringUtils.isNullOrWhitespaceOnly(securityToken)
-                                ? builder.build(
-                                        endpoint,
-                                        options.get(OSS_ACCESS_KEY_ID),
-                                        options.get(OSS_ACCESS_KEY_SECRET))
-                                : builder.build(
-                                        endpoint,
-                                        options.get(OSS_ACCESS_KEY_ID),
-                                        options.get(OSS_ACCESS_KEY_SECRET),
-                                        securityToken));
-        String region = options.get(OSS_REGION);
-        if (!StringUtils.isNullOrWhitespaceOnly(region)) {
-            client.setRegion(region);
-        }
-        return client;
+    static OSSFileIO createBlobFileIO(Options options) {
+        Options blobOptions = new Options(options.toMap());
+        // Jindo installs its own credentials-provider class, which is not an OSS SDK provider.
+        // As before, Blob URLs use the explicitly configured access key and optional STS token.
+        blobOptions.remove("fs.oss.credentials.provider");
+        blobOptions.set(FILE_IO_ALLOW_CACHE, false);
+        OSSFileIO io = new OSSFileIO();
+        io.configure(CatalogContext.create(blobOptions));
+        return io;
     }
 
     @Override
@@ -306,9 +289,9 @@ public class JindoFileIO extends HadoopCompliantFileIO implements HadoopOptionsP
 
     @Override
     public synchronized void close() {
-        if (blobClient != null) {
-            blobClient.shutdown();
-            blobClient = null;
+        if (blobFileIO != null) {
+            IOUtils.closeQuietly(blobFileIO);
+            blobFileIO = null;
         }
         if (!allowCache) {
             fsMap.values().stream().map(Pair::getKey).forEach(IOUtils::closeQuietly);

@@ -27,32 +27,15 @@ import org.apache.paimon.fs.SeekableInputStream;
 import org.apache.paimon.fs.TwoPhaseOutputStream;
 import org.apache.paimon.options.Options;
 import org.apache.paimon.utils.IOUtils;
-import org.apache.paimon.utils.ReflectionUtils;
-import org.apache.paimon.utils.SensitiveConfigUtils;
 import org.apache.paimon.utils.StringUtils;
 
-import com.aliyun.oss.OSSClient;
-import com.aliyun.oss.OSSException;
-import com.aliyun.oss.common.auth.CredentialsProvider;
-import com.aliyun.oss.common.comm.ServiceClient;
-import com.aliyun.oss.internal.OSSHeaders;
-import com.aliyun.oss.internal.OSSMultipartOperation;
-import com.aliyun.oss.internal.OSSObjectOperation;
-import com.aliyun.oss.model.CopyObjectRequest;
-import com.aliyun.oss.model.CopyObjectResult;
-import com.aliyun.oss.model.InitiateMultipartUploadRequest;
-import com.aliyun.oss.model.InitiateMultipartUploadResult;
-import com.aliyun.oss.model.ObjectMetadata;
-import com.aliyun.oss.model.PutObjectRequest;
-import com.aliyun.oss.model.PutObjectResult;
+import com.aliyun.sdk.service.oss2.OSSClient;
+import com.aliyun.sdk.service.oss2.exceptions.ServiceException;
+import com.aliyun.sdk.service.oss2.models.PutObjectRequest;
+import com.aliyun.sdk.service.oss2.transport.BinaryData;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
-import org.apache.hadoop.fs.aliyun.oss.AliyunOSSFileSystem;
-import org.apache.hadoop.fs.aliyun.oss.AliyunOSSFileSystemStore;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
-import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.net.URI;
@@ -67,68 +50,17 @@ import java.util.function.Supplier;
 import static org.apache.paimon.options.CatalogOptions.FILE_IO_ALLOW_CACHE;
 import static org.apache.paimon.utils.Preconditions.checkArgument;
 
-/** OSS {@link FileIO}. */
+/** OSS {@link FileIO}, backed entirely by the OSS Java SDK v2. */
 public class OSSFileIO extends HadoopCompliantFileIO implements HadoopOptionsProvider {
 
     private static final long serialVersionUID = 2L;
-
-    private static final Logger LOG = LoggerFactory.getLogger(OSSFileIO.class);
-
-    /**
-     * In order to simplify, we make paimon oss configuration keys same with hadoop oss module. So,
-     * we add all configuration key with prefix `fs.oss` in paimon conf to hadoop conf.
-     */
-    private static final String[] CONFIG_PREFIXES = {"fs.oss."};
-
-    private static final String OSS_ACCESS_KEY_ID = "fs.oss.accessKeyId";
-    private static final String OSS_ACCESS_KEY_SECRET = "fs.oss.accessKeySecret";
-    private static final String OSS_SECURITY_TOKEN = "fs.oss.securityToken";
-    private static final String OSS_SECOND_LEVEL_DOMAIN_ENABLED = "fs.oss.sld.enabled";
-
-    /**
-     * Set to false for an OSS-compatible endpoint that is neither an official Aliyun domain nor a
-     * CNAME custom domain. The SDK otherwise treats such a host as a CNAME and drops the bucket
-     * from the host it signs, which the server rejects with SignatureDoesNotMatch.
-     */
-    private static final String OSS_CNAME_ENABLED = "fs.oss.cname.enabled";
-    // Paimon OSS SSE keys, mapping 1:1 to the OSS headers; they take precedence over hadoop's
-    // server-side-encryption-algorithm.
-    /** SSE method -> x-oss-server-side-encryption (AES256 / KMS / SM4). */
     private static final String OSS_SSE_METHOD = "fs.oss.server-side-encryption";
-
-    /** CMK key id -> x-oss-server-side-encryption-key-id (valid only when the method is KMS). */
     private static final String OSS_SSE_KMS_KEY_ID = "fs.oss.server-side-encryption-key-id";
-
-    /**
-     * Data encryption -> x-oss-server-side-data-encryption (SM4; valid only when method is KMS).
-     */
     private static final String OSS_SSE_DATA_ENCRYPTION = "fs.oss.server-side-data-encryption";
-
-    /**
-     * hadoop-aliyun's native SSE method key; only used as the {@code tryToWriteAtomic} fallback.
-     */
-    private static final String OSS_SSE_ALGORITHM = "fs.oss.server-side-encryption-algorithm";
-
     private static final String SSE_METHOD_AES256 = "AES256";
     private static final String SSE_METHOD_KMS = "KMS";
     private static final String SSE_DATA_SM4 = "SM4";
-
-    private static final Map<String, String> CASE_SENSITIVE_KEYS =
-            new HashMap<String, String>() {
-                {
-                    put(OSS_ACCESS_KEY_ID.toLowerCase(), OSS_ACCESS_KEY_ID);
-                    put(OSS_ACCESS_KEY_SECRET.toLowerCase(), OSS_ACCESS_KEY_SECRET);
-                    put(OSS_SECURITY_TOKEN.toLowerCase(), OSS_SECURITY_TOKEN);
-                }
-            };
-
-    /**
-     * Cache AliyunOSSFileSystem, at present, there is no good mechanism to ensure that the file
-     * system will be shut down, so here the fs cache is used to avoid resource leakage.
-     */
-    private static final Map<CacheKey, AliyunOSSFileSystem> CACHE = new ConcurrentHashMap<>();
-
-    // create a shared config to avoid load properties everytime
+    private static final Map<CacheKey, OSSFileSystem> CACHE = new ConcurrentHashMap<>();
     private static final Configuration SHARED_CONFIG = new Configuration();
 
     private Options hadoopOptions;
@@ -143,37 +75,24 @@ public class OSSFileIO extends HadoopCompliantFileIO implements HadoopOptionsPro
     public void configure(CatalogContext context) {
         allowCache = context.options().get(FILE_IO_ALLOW_CACHE);
         hadoopOptions = new Options();
-        // read all configuration with prefix 'CONFIG_PREFIXES'
         for (String key : context.options().keySet()) {
-            for (String prefix : CONFIG_PREFIXES) {
-                if (key.startsWith(prefix)) {
-                    String value = context.options().get(key);
-                    if (CASE_SENSITIVE_KEYS.containsKey(key.toLowerCase())) {
-                        key = CASE_SENSITIVE_KEYS.get(key.toLowerCase());
+            if (key.startsWith("fs.oss.")) {
+                String normalized = key;
+                for (String sensitive :
+                        new String[] {
+                            "fs.oss.accessKeyId", "fs.oss.accessKeySecret", "fs.oss.securityToken"
+                        }) {
+                    if (key.equalsIgnoreCase(sensitive)) {
+                        normalized = sensitive;
                     }
-                    hadoopOptions.set(key, value);
-
-                    LOG.debug(
-                            "Adding config entry for {} as {} to Hadoop config",
-                            key,
-                            SensitiveConfigUtils.redactValue(key, hadoopOptions.get(key)));
                 }
+                hadoopOptions.set(normalized, context.options().get(key));
             }
         }
-    }
-
-    @Override
-    public TwoPhaseOutputStream newTwoPhaseOutputStream(Path path, boolean overwrite)
-            throws IOException {
-        if (!overwrite && this.exists(path)) {
-            throw new IOException("File " + path + " already exists.");
-        }
-        org.apache.hadoop.fs.Path hadoopPath = path(path);
-        FileSystem fs = getFileSystem(hadoopPath);
-        return new OssTwoPhaseOutputStream(
-                new OSSMultiPartUpload((org.apache.hadoop.fs.aliyun.oss.AliyunOSSFileSystem) fs),
-                hadoopPath,
-                path);
+        resolveSse(
+                hadoopOptions.get(OSS_SSE_METHOD),
+                hadoopOptions.get(OSS_SSE_KMS_KEY_ID),
+                hadoopOptions.get(OSS_SSE_DATA_ENCRYPTION));
     }
 
     public Options hadoopOptions() {
@@ -186,176 +105,99 @@ public class OSSFileIO extends HadoopCompliantFileIO implements HadoopOptionsPro
     }
 
     @Override
-    protected AliyunOSSFileSystem createFileSystem(org.apache.hadoop.fs.Path path) {
-        final String scheme = path.toUri().getScheme();
-        final String authority = path.toUri().getAuthority();
-        Supplier<AliyunOSSFileSystem> supplier =
+    protected OSSFileSystem createFileSystem(org.apache.hadoop.fs.Path path) {
+        URI uri = path.toUri();
+        Supplier<OSSFileSystem> supplier =
                 () -> {
-                    // create config from base config, if initializing a new config, it will
-                    // retrieve props from the file, which comes at a high cost
-                    Configuration hadoopConf = new Configuration(SHARED_CONFIG);
-                    hadoopOptions.toMap().forEach(hadoopConf::set);
-                    URI fsUri = path.toUri();
-                    if (scheme == null && authority == null) {
-                        fsUri = FileSystem.getDefaultUri(hadoopConf);
-                    } else if (scheme != null && authority == null) {
-                        URI defaultUri = FileSystem.getDefaultUri(hadoopConf);
-                        if (scheme.equals(defaultUri.getScheme())
-                                && defaultUri.getAuthority() != null) {
-                            fsUri = defaultUri;
-                        }
-                    }
-
-                    AliyunOSSFileSystem fs = new AliyunOSSFileSystem();
+                    Configuration configuration = new Configuration(SHARED_CONFIG);
+                    hadoopOptions.toMap().forEach(configuration::set);
+                    OSSFileSystem fs = new OSSFileSystem();
                     try {
-                        fs.initialize(fsUri, hadoopConf);
+                        fs.initialize(uri, configuration);
+                        return fs;
                     } catch (IOException e) {
+                        IOUtils.closeQuietly(fs);
                         throw new UncheckedIOException(e);
+                    } catch (RuntimeException | Error e) {
+                        IOUtils.closeQuietly(fs);
+                        throw e;
                     }
-
-                    if (hadoopOptions.getBoolean(OSS_SECOND_LEVEL_DOMAIN_ENABLED, false)) {
-                        enableSecondLevelDomain(fs);
-                    }
-
-                    if (!hadoopOptions.getBoolean(OSS_CNAME_ENABLED, true)) {
-                        disableCname(fs);
-                    }
-
-                    SseConfig sse = configuredSse();
-                    if (sse != null) {
-                        enableSse(fs, sse);
-                    }
-
-                    return fs;
                 };
-
-        if (allowCache) {
-            return CACHE.computeIfAbsent(
-                    new CacheKey(hadoopOptions, scheme, authority), key -> supplier.get());
-        } else {
-            return supplier.get();
-        }
+        return allowCache
+                ? CACHE.computeIfAbsent(
+                        new CacheKey(hadoopOptions, uri.getAuthority()), k -> supplier.get())
+                : supplier.get();
     }
 
     @Override
     public SeekableInputStream newInputStream(Path path, long fileSize) throws IOException {
-        URI uri = path.toUri();
-        if (fileSize < 0 || !"oss".equals(uri.getScheme()) || uri.getHost() == null) {
+        if (fileSize < 0) {
             return super.newInputStream(path);
         }
         try {
+            URI uri = path.toUri();
             return new OSSRangeInputStream(
                     ossClient(path),
                     uri.getHost(),
                     uri.getPath().substring(1),
                     fileSize,
-                    FileSystem.getStatistics("oss", AliyunOSSFileSystem.class));
-        } catch (Exception e) {
+                    FileSystem.getStatistics("oss", OSSFileSystem.class));
+        } catch (RuntimeException e) {
             throw new IOException("Failed to open OSS file " + path, e);
         }
     }
 
     @Override
+    public TwoPhaseOutputStream newTwoPhaseOutputStream(Path path, boolean overwrite)
+            throws IOException {
+        OSSFileSystem fs = (OSSFileSystem) getFileSystem(path(path));
+        fs.checkCreate(path(path), overwrite);
+        return new OssTwoPhaseOutputStream(
+                new OSSMultiPartUpload(fs, overwrite), path(path), path, overwrite);
+    }
+
+    @Override
     public boolean tryToWriteAtomic(Path path, String content) throws IOException {
-        URI uri = path.toUri();
-        String bucket = uri.getHost();
-        String objectKey = uri.getPath().substring(1);
-        byte[] bytes = content.getBytes(StandardCharsets.UTF_8);
-
-        ObjectMetadata metadata = new ObjectMetadata();
-        metadata.setContentLength(bytes.length);
-        metadata.setHeader("x-oss-forbid-overwrite", "true");
-        // Fall back to native SSE only when Paimon SSE is unset (the swap stamps it otherwise).
-        String sseAlgorithm = hadoopOptions.getString(OSS_SSE_ALGORITHM, "");
-        if (StringUtils.isNotEmpty(sseAlgorithm) && configuredSse() == null) {
-            metadata.setServerSideEncryption(sseAlgorithm);
-        }
-
-        AliyunOSSFileSystem fs = (AliyunOSSFileSystem) getFileSystem(path(path));
+        OSSFileSystem fs = (OSSFileSystem) getFileSystem(path(path));
         try {
-            OSSClient ossClient = getOssClient(fs);
-            ossClient.putObject(bucket, objectKey, new ByteArrayInputStream(bytes), metadata);
+            fs.client()
+                    .putObject(
+                            PutObjectRequest.newBuilder()
+                                    .bucket(fs.bucket())
+                                    .key(fs.objectKey(path(path)))
+                                    .forbidOverwrite(true)
+                                    .headers(fs.writeHeaders())
+                                    .body(
+                                            BinaryData.fromBytes(
+                                                    content.getBytes(StandardCharsets.UTF_8)))
+                                    .build());
             return true;
-        } catch (OSSException e) {
-            if ("FileAlreadyExists".equals(e.getErrorCode())) {
-                LOG.warn("Failed to atomic write {}: object already exists", path);
+        } catch (RuntimeException e) {
+            ServiceException service = ServiceException.asCause(e);
+            if (service != null && "FileAlreadyExists".equals(service.errorCode())) {
                 return false;
             }
-            throw new IOException("Failed to atomic write " + path, e);
-        } catch (Exception e) {
-            throw new IOException("Failed to atomic write " + path, e);
+            throw OSSFileSystem.ioException("Failed to write atomically", path(path), e);
         }
     }
 
     @Override
     public String createBlobPresignedUrl(
             Path tableRoot, BlobDescriptor descriptor, Duration validity) throws IOException {
-        try {
-            return OSSBlobPresigner.create(
-                    ossClient(new Path(descriptor.uri())), tableRoot, descriptor, validity);
-        } catch (IOException e) {
-            throw e;
-        } catch (Exception e) {
-            throw new IOException("Failed to create blob presigned URL.", e);
-        }
+        OSSFileSystem fs = (OSSFileSystem) getFileSystem(path(new Path(descriptor.uri())));
+        return OSSBlobPresigner.create(fs, tableRoot, descriptor, validity);
     }
 
-    OSSClient ossClient(Path path) throws Exception {
-        return getOssClient((AliyunOSSFileSystem) getFileSystem(path(path)));
+    OSSClient ossClient(Path path) throws IOException {
+        return ((OSSFileSystem) getFileSystem(path(path))).client();
     }
 
     @Override
     public void close() {
-        if (!allowCache) {
+        if (!allowCache && fsMap != null) {
             fsMap.values().forEach(IOUtils::closeQuietly);
             fsMap.clear();
         }
-    }
-
-    public void enableSecondLevelDomain(AliyunOSSFileSystem fs) {
-        try {
-            OSSClient ossClient = getOssClient(fs);
-            ServiceClient serviceClient =
-                    ReflectionUtils.getPrivateFieldValue(ossClient, "serviceClient");
-            serviceClient.getClientConfiguration().setSLDEnabled(true);
-        } catch (Exception e) {
-            LOG.error("Failed to enable second level domain.", e);
-            throw new RuntimeException("Failed to enable second level domain.", e);
-        }
-    }
-
-    public void disableCname(AliyunOSSFileSystem fs) {
-        try {
-            setSupportCname(getOssClient(fs), false);
-        } catch (Exception e) {
-            LOG.error("Failed to disable CNAME support.", e);
-            throw new RuntimeException("Failed to disable CNAME support.", e);
-        }
-    }
-
-    /**
-     * Flip the SDK's CNAME heuristic; package-private so a test pins the reflected name. The
-     * configuration reached here is the one {@code OSSRequestMessageBuilder} reads while building
-     * every request, so this takes effect on an already-initialized client.
-     */
-    static void setSupportCname(OSSClient ossClient, boolean supportCname) throws Exception {
-        ServiceClient serviceClient =
-                ReflectionUtils.getPrivateFieldValue(ossClient, "serviceClient");
-        serviceClient.getClientConfiguration().setSupportCname(supportCname);
-    }
-
-    /** Reflectively extract the underlying {@link OSSClient} that hadoop-aliyun keeps private. */
-    private static OSSClient getOssClient(AliyunOSSFileSystem fs) throws Exception {
-        AliyunOSSFileSystemStore store = fs.getStore();
-        return ReflectionUtils.getPrivateFieldValue(store, "ossClient");
-    }
-
-    /** The Paimon SSE config from the three keys, or null when none is set. */
-    private SseConfig configuredSse() {
-        return resolveSse(
-                hadoopOptions.get(OSS_SSE_METHOD),
-                hadoopOptions.get(OSS_SSE_KMS_KEY_ID),
-                hadoopOptions.get(OSS_SSE_DATA_ENCRYPTION));
     }
 
     /** Parse the three SSE keys into an {@link SseConfig}, or null. Throws on bad input. */
@@ -441,147 +283,51 @@ public class OSSFileIO extends HadoopCompliantFileIO implements HadoopOptionsPro
         }
     }
 
-    /** Swap in the SSE-stamping object/multipart operations (write paths only). */
-    private void enableSse(AliyunOSSFileSystem fs, SseConfig sse) {
-        try {
-            swapSseOperations(getOssClient(fs), sse);
-        } catch (Exception e) {
-            LOG.error("Failed to enable OSS server-side encryption.", e);
-            throw new RuntimeException("Failed to enable OSS server-side encryption.", e);
+    static Map<String, String> writeHeaders(Options options) {
+        SseConfig sse =
+                resolveSse(
+                        options.get(OSS_SSE_METHOD),
+                        options.get(OSS_SSE_KMS_KEY_ID),
+                        options.get(OSS_SSE_DATA_ENCRYPTION));
+        Map<String, String> headers = new HashMap<>();
+        if (sse != null) {
+            headers.put("x-oss-server-side-encryption", sse.method);
+            if (sse.keyId != null) {
+                headers.put("x-oss-server-side-encryption-key-id", sse.keyId);
+            }
+            if (sse.dataEnc != null) {
+                headers.put("x-oss-server-side-data-encryption", sse.dataEnc);
+            }
+        } else {
+            String fallback = options.get("fs.oss.server-side-encryption-algorithm");
+            if (fallback != null && !fallback.isEmpty()) {
+                headers.put("x-oss-server-side-encryption", fallback);
+            }
         }
-    }
-
-    /** Swap in the SSE-stamping operations; package-private so a test pins reflected names. */
-    static void swapSseOperations(OSSClient ossClient, SseConfig sse) throws Exception {
-        ServiceClient serviceClient =
-                ReflectionUtils.getPrivateFieldValue(ossClient, "serviceClient");
-        CredentialsProvider credsProvider =
-                ReflectionUtils.getPrivateFieldValue(ossClient, "credsProvider");
-        // Replacement operations must inherit the endpoint or requests NPE.
-        URI endpoint = ossClient.getEndpoint();
-        SseObjectOperation objectOperation =
-                new SseObjectOperation(serviceClient, credsProvider, sse);
-        objectOperation.setEndpoint(endpoint);
-        SseMultipartOperation multipartOperation =
-                new SseMultipartOperation(serviceClient, credsProvider, sse);
-        multipartOperation.setEndpoint(endpoint);
-        ReflectionUtils.setPrivateFieldValue(ossClient, "objectOperation", objectOperation);
-        ReflectionUtils.setPrivateFieldValue(ossClient, "multipartOperation", multipartOperation);
-        // Fail closed: if the swap didn't take effect, refuse to write unencrypted.
-        if (ossClient.getObjectOperation() != objectOperation
-                || ossClient.getMultipartOperation() != multipartOperation) {
-            throw new IllegalStateException(
-                    "OSS SSE operation swap did not take effect; refusing to write without "
-                            + "server-side encryption. The aliyun-oss-sdk internals may have changed.");
-        }
-    }
-
-    /** Stamp the SSE headers on object metadata (PutObject / multipart init). */
-    static ObjectMetadata applySse(ObjectMetadata metadata, SseConfig sse) {
-        if (metadata == null) {
-            metadata = new ObjectMetadata();
-        }
-        String existing = metadata.getServerSideEncryption();
-        if (existing != null && !sse.method.equals(existing)) {
-            LOG.warn(
-                    "Paimon SSE is overriding the previously-set server-side encryption "
-                            + "method '{}' with '{}'.",
-                    existing,
-                    sse.method);
-        }
-        metadata.setServerSideEncryption(sse.method);
-        if (sse.keyId != null) {
-            metadata.setServerSideEncryptionKeyId(sse.keyId);
-        }
-        if (sse.dataEnc != null) {
-            metadata.setServerSideDataEncryption(sse.dataEnc);
-        }
-        return metadata;
-    }
-
-    /** Stamp the SSE headers on a server-side CopyObject request (rename/commit). */
-    static CopyObjectRequest applySse(CopyObjectRequest request, SseConfig sse) {
-        // Use request fields, not newObjectMetadata (forces REPLACE, drops source metadata).
-        // No data-encryption field; addHeader works since doOperation merges headers pre-sign.
-        request.setServerSideEncryption(sse.method);
-        if (sse.keyId != null) {
-            request.setServerSideEncryptionKeyId(sse.keyId);
-        }
-        if (sse.dataEnc != null) {
-            request.addHeader(OSSHeaders.OSS_SERVER_SIDE_DATA_ENCRYPTION, sse.dataEnc);
-        }
-        return request;
-    }
-
-    /** Stamps the SSE headers on every simple PutObject and server-side CopyObject. */
-    static class SseObjectOperation extends OSSObjectOperation {
-        private final SseConfig sse;
-
-        SseObjectOperation(
-                ServiceClient serviceClient, CredentialsProvider credsProvider, SseConfig sse) {
-            super(serviceClient, credsProvider);
-            this.sse = sse;
-        }
-
-        @Override
-        public PutObjectResult putObject(PutObjectRequest request) {
-            request.setMetadata(applySse(request.getMetadata(), sse));
-            return super.putObject(request);
-        }
-
-        @Override
-        public CopyObjectResult copyObject(CopyObjectRequest request) {
-            return super.copyObject(applySse(request, sse));
-        }
-    }
-
-    /** Stamps the SSE headers on the multipart-upload init; parts inherit them. */
-    static class SseMultipartOperation extends OSSMultipartOperation {
-        private final SseConfig sse;
-
-        SseMultipartOperation(
-                ServiceClient serviceClient, CredentialsProvider credsProvider, SseConfig sse) {
-            super(serviceClient, credsProvider);
-            this.sse = sse;
-        }
-
-        @Override
-        public InitiateMultipartUploadResult initiateMultipartUpload(
-                InitiateMultipartUploadRequest request) {
-            request.setObjectMetadata(applySse(request.getObjectMetadata(), sse));
-            return super.initiateMultipartUpload(request);
-        }
+        return headers;
     }
 
     private static class CacheKey {
-
         private final Options options;
-        private final String scheme;
         private final String authority;
 
-        private CacheKey(Options options, String scheme, String authority) {
-            this.options = options;
-            this.scheme = scheme;
+        CacheKey(Options options, String authority) {
+            this.options = new Options(options.toMap());
             this.authority = authority;
         }
 
         @Override
-        public boolean equals(Object o) {
-            if (this == o) {
-                return true;
-            }
-            if (o == null || getClass() != o.getClass()) {
+        public boolean equals(Object other) {
+            if (!(other instanceof CacheKey)) {
                 return false;
             }
-            CacheKey cacheKey = (CacheKey) o;
-            return Objects.equals(options, cacheKey.options)
-                    && Objects.equals(scheme, cacheKey.scheme)
-                    && Objects.equals(authority, cacheKey.authority);
+            CacheKey that = (CacheKey) other;
+            return options.equals(that.options) && Objects.equals(authority, that.authority);
         }
 
         @Override
         public int hashCode() {
-            return Objects.hash(options, scheme, authority);
+            return Objects.hash(options, authority);
         }
     }
 }
