@@ -29,6 +29,8 @@ import org.apache.paimon.data.Decimal;
 import org.apache.paimon.data.GenericArray;
 import org.apache.paimon.data.GenericMap;
 import org.apache.paimon.data.GenericRow;
+import org.apache.paimon.data.InternalArray;
+import org.apache.paimon.data.InternalMap;
 import org.apache.paimon.data.InternalRow;
 import org.apache.paimon.data.Timestamp;
 import org.apache.paimon.data.columnar.AllNullColumnVector;
@@ -47,6 +49,8 @@ import org.apache.arrow.memory.OutOfMemoryException;
 import org.apache.arrow.memory.RootAllocator;
 import org.apache.arrow.vector.FieldVector;
 import org.apache.arrow.vector.IntVector;
+import org.apache.arrow.vector.TimeStampNanoTZVector;
+import org.apache.arrow.vector.TimeStampNanoVector;
 import org.apache.arrow.vector.VarBinaryVector;
 import org.apache.arrow.vector.VarCharVector;
 import org.apache.arrow.vector.VectorSchemaRoot;
@@ -70,6 +74,7 @@ import java.util.Random;
 import java.util.concurrent.ThreadLocalRandom;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /** Test for {@link org.apache.paimon.arrow.vector.ArrowFormatWriter}. */
 public class ArrowFormatWriterTest {
@@ -167,6 +172,131 @@ public class ArrowFormatWriterTest {
                             reader.readBatch(inputWriter.getVectorSchemaRoot()).iterator().next();
             assertThat(row.batch().columns[1]).isSameAs(AllNullColumnVector.INSTANCE);
             assertThat(row.isNullAt(1)).isTrue();
+        }
+    }
+
+    @Test
+    public void testWriteNullElementInNotNullArrayColumn() {
+        RowType rowType = RowType.of(DataTypes.ARRAY(DataTypes.INT()).notNull());
+        try (ArrowFormatWriter writer = new ArrowFormatWriter(rowType, 16, true)) {
+            writer.write(GenericRow.of(new GenericArray(new Object[] {1, null, 3})));
+            writer.flush();
+
+            InternalRow row =
+                    new ArrowBatchReader(rowType, true)
+                            .readBatch(writer.getVectorSchemaRoot())
+                            .iterator()
+                            .next();
+            InternalArray array = row.getArray(0);
+            assertThat(array.isNullAt(1)).isTrue();
+        }
+    }
+
+    @Test
+    public void testWriteNullElementInNotNullElementArrayColumn() {
+        RowType rowType = RowType.of(DataTypes.ARRAY(DataTypes.INT().notNull()));
+        try (ArrowFormatWriter writer = new ArrowFormatWriter(rowType, 16, true)) {
+            assertThatThrownBy(
+                            () ->
+                                    writer.write(
+                                            GenericRow.of(
+                                                    new GenericArray(new Object[] {1, null}))))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("expected not null but found null value");
+        }
+    }
+
+    @Test
+    public void testWriteNullValueInNotNullMapColumn() {
+        RowType rowType = RowType.of(DataTypes.MAP(DataTypes.INT(), DataTypes.INT()).notNull());
+        Map<Integer, Integer> values = new HashMap<>();
+        values.put(1, null);
+
+        try (ArrowFormatWriter writer = new ArrowFormatWriter(rowType, 16, true)) {
+            writer.write(GenericRow.of(new GenericMap(values)));
+            writer.flush();
+
+            InternalRow row =
+                    new ArrowBatchReader(rowType, true)
+                            .readBatch(writer.getVectorSchemaRoot())
+                            .iterator()
+                            .next();
+            InternalMap map = row.getMap(0);
+            assertThat(map.valueArray().isNullAt(0)).isTrue();
+        }
+    }
+
+    @Test
+    public void testWriteNullKeyInMapColumnFails() {
+        RowType rowType = RowType.of(DataTypes.MAP(DataTypes.INT(), DataTypes.INT()));
+        Map<Integer, Integer> values = new HashMap<>();
+        values.put(null, 1);
+
+        try (ArrowFormatWriter writer = new ArrowFormatWriter(rowType, 16, true)) {
+            assertThatThrownBy(() -> writer.write(GenericRow.of(new GenericMap(values))))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("expected not null but found null value");
+        }
+    }
+
+    @Test
+    public void testWriteNullFieldInNotNullNestedRowField() {
+        RowType rowType =
+                RowType.of(DataTypes.ROW(DataTypes.FIELD(0, "a", DataTypes.INT().notNull())));
+        try (ArrowFormatWriter writer = new ArrowFormatWriter(rowType, 16, true)) {
+            assertThatThrownBy(() -> writer.write(GenericRow.of(GenericRow.of((Object) null))))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("expected not null but found null value");
+        }
+    }
+
+    @Test
+    public void testArrowBundleRecordsWithPreEpochNanoTimestamps() {
+        RowType rowType =
+                RowType.of(
+                        new DataField(0, "ts_nano", DataTypes.TIMESTAMP(9)),
+                        new DataField(
+                                1, "ts_ltz_nano", DataTypes.TIMESTAMP_WITH_LOCAL_TIME_ZONE(9)));
+
+        try (RootAllocator allocator = new RootAllocator()) {
+            TimeStampNanoVector tsVector = new TimeStampNanoVector("ts_nano", allocator);
+            tsVector.allocateNew(1);
+            tsVector.setSafe(0, -1L);
+            tsVector.setValueCount(1);
+
+            TimeStampNanoTZVector tsLtzVector =
+                    new TimeStampNanoTZVector("ts_ltz_nano", allocator, "UTC");
+            tsLtzVector.allocateNew(1);
+            tsLtzVector.setSafe(0, -1L);
+            tsLtzVector.setValueCount(1);
+
+            try (VectorSchemaRoot root =
+                    new VectorSchemaRoot(Arrays.asList(tsVector, tsLtzVector))) {
+                root.setRowCount(1);
+                InternalRow row = new ArrowBundleRecords(root, rowType, true).iterator().next();
+                Timestamp expected = Timestamp.fromEpochMillis(-1, 999_999);
+                assertThat(row.getTimestamp(0, 9)).isEqualTo(expected);
+                assertThat(row.getTimestamp(1, 9)).isEqualTo(expected);
+            }
+        }
+    }
+
+    @Test
+    public void testWritePreEpochSecondPrecisionTimestamp() {
+        RowType rowType =
+                RowType.of(DataTypes.TIMESTAMP(0), DataTypes.TIMESTAMP_WITH_LOCAL_TIME_ZONE(0));
+        try (ArrowFormatWriter writer = new ArrowFormatWriter(rowType, 16, true)) {
+            Timestamp preEpoch = Timestamp.fromEpochMillis(-500);
+            writer.write(GenericRow.of(preEpoch, preEpoch));
+            writer.flush();
+
+            InternalRow row =
+                    new ArrowBatchReader(rowType, true)
+                            .readBatch(writer.getVectorSchemaRoot())
+                            .iterator()
+                            .next();
+            assertThat(row.getTimestamp(0, 0).toString()).isEqualTo("1969-12-31T23:59:59");
+            assertThat(row.getTimestamp(1, 0).toString()).isEqualTo("1969-12-31T23:59:59");
         }
     }
 
