@@ -20,6 +20,8 @@ package org.apache.paimon.format;
 
 import org.apache.paimon.data.InternalRow;
 
+import javax.annotation.Nullable;
+
 import java.io.Closeable;
 import java.io.IOException;
 
@@ -49,4 +51,10 @@ public interface FormatWriter extends Closeable {
      * @throws IOException Thrown if calculating the length fails.
      */
     boolean reachTargetSize(boolean suggestedCheck, long targetSize) throws IOException;
+
+    /** Returns format-specific metadata after the writer has been closed. */
+    @Nullable
+    default Object writerMetadata() {
+        return null;
+    }
 }

@@ -22,12 +22,20 @@ import org.apache.paimon.fs.FileIO;
 import org.apache.paimon.fs.Path;
 import org.apache.paimon.utils.Pair;
 
+import javax.annotation.Nullable;
+
 import java.io.IOException;
 
 /** Extracts statistics directly from file. */
 public interface SimpleStatsExtractor {
 
     SimpleColStats[] extract(FileIO fileIO, Path path, long length) throws IOException;
+
+    default SimpleColStats[] extract(
+            FileIO fileIO, Path path, long length, @Nullable Object writerMetadata)
+            throws IOException {
+        return extract(fileIO, path, length);
+    }
 
     Pair<SimpleColStats[], FileInfo> extractWithFileInfo(FileIO fileIO, Path path, long length)
             throws IOException;
