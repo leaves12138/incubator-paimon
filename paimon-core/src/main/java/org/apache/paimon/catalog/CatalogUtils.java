@@ -302,8 +302,7 @@ public class CatalogUtils {
                         catalog.supportsPartitionModification());
         Path path = new Path(schema.options().get(PATH.key()));
         FileStoreTable table =
-                FileStoreTableFactory.create(
-                        createFileIO(dataFileIO, path, schema.options()), path, schema, catalogEnv);
+                FileStoreTableFactory.create(dataFileIO.apply(path), path, schema, catalogEnv);
 
         if (identifier.isSystemTable()) {
             return CatalogUtils.createSystemTable(identifier, table);
@@ -420,7 +419,7 @@ public class CatalogUtils {
                                 CoreOptions.FILE_FORMAT.defaultValue()));
         String location = options.get(CoreOptions.PATH.key());
         return FormatTable.builder()
-                .fileIO(createFileIO(fileIO, new Path(location), options))
+                .fileIO(fileIO.apply(new Path(location)))
                 .identifier(identifier)
                 .rowType(schema.logicalRowType())
                 .partitionKeys(schema.partitionKeys())
@@ -437,7 +436,7 @@ public class CatalogUtils {
         Map<String, String> options = schema.options();
         String location = options.get(CoreOptions.PATH.key());
         return ObjectTable.builder()
-                .fileIO(createFileIO(fileIO, new Path(location), options))
+                .fileIO(fileIO.apply(new Path(location)))
                 .identifier(identifier)
                 .location(location)
                 .options(options)
@@ -450,7 +449,7 @@ public class CatalogUtils {
         Map<String, String> options = schema.options();
         String location = options.get(CoreOptions.PATH.key());
         return LanceTable.builder()
-                .fileIO(createFileIO(fileIO, new Path(location), options))
+                .fileIO(fileIO.apply(new Path(location)))
                 .identifier(identifier)
                 .location(location)
                 .rowType(schema.logicalRowType())
@@ -467,7 +466,7 @@ public class CatalogUtils {
         Map<String, String> options = schema.options();
         String location = options.get(CoreOptions.PATH.key());
         return IcebergTable.builder()
-                .fileIO(createFileIO(fileIO, new Path(location), options))
+                .fileIO(fileIO.apply(new Path(location)))
                 .identifier(identifier)
                 .location(location)
                 .rowType(schema.logicalRowType())
@@ -476,12 +475,5 @@ public class CatalogUtils {
                 .comment(schema.comment())
                 .uuid(uuid)
                 .build();
-    }
-
-    private static FileIO createFileIO(
-            Function<Path, FileIO> fileIOFunction, Path path, Map<String, String> tableOptions) {
-        FileIO created = fileIOFunction.apply(path);
-        created.setRuntimeContext(tableOptions);
-        return created;
     }
 }
